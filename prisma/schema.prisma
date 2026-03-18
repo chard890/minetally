@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  email      String    @unique
+  role       String    @default("admin")
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@map("users")
+}
+
+model FacebookPage {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  metaPageId     String       @unique @map("meta_page_id")
+  pageName       String       @map("page_name")
+  accessToken    String?      @map("access_token")
+  tokenExpiresAt DateTime?    @map("token_expires_at") @db.Timestamptz(6)
+  connectedAt    DateTime?    @default(now()) @map("connected_at") @db.Timestamptz(6)
+  created_at     DateTime?    @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime?    @default(now()) @db.Timestamptz(6)
+  collections    Collection[]
+
+  @@map("facebook_pages")
+}
+
+model Collection {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pageId              String?       @map("page_id") @db.Uuid
+  name                String
+  startDate           DateTime      @map("start_date") @db.Timestamptz(6)
+  endDate             DateTime      @map("end_date") @db.Timestamptz(6)
+  finalizeDate        DateTime?     @map("finalize_date") @db.Timestamptz(6)
+  total_batch_posts   Int?          @default(0)
+  total_items         Int?          @default(0)
+  total_claimed_items Int?          @default(0)
+  total_needs_review  Int?          @default(0)
+  total_value         Decimal?      @default(0.00) @db.Decimal(12, 2)
+  createdAt           DateTime?     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime?     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastSyncedAt        DateTime?     @map("last_synced_at") @db.Timestamptz(6)
+  syncError           String?       @map("sync_error")
+  status              String?       @default("open")
+  audit_logs          AuditLog[]
+  batchPosts          BatchPost[]
+  buyerTotals         BuyerTotal[]
+  page                FacebookPage? @relation(fields: [pageId], references: [id], onUpdate: NoAction)
+  items               Item[]
+
+  @@map("collections")
+}
+
+model BatchPost {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  collectionId        String             @map("collection_id") @db.Uuid
+  metaPostId          String?            @unique @map("meta_post_id")
+  title               String
+  caption             String?
+  postedAt            DateTime?          @map("posted_at") @db.Timestamptz(6)
+  total_items         Int?               @default(0)
+  total_claimed_items Int?               @default(0)
+  total_needs_review  Int?               @default(0)
+  createdAt           DateTime?          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updated_at          DateTime?          @default(now()) @db.Timestamptz(6)
+  lastSyncedAt        DateTime?          @map("last_synced_at") @db.Timestamptz(6)
+  syncError           String?            @map("sync_error")
+  sync_status         batch_sync_status? @default(not_synced)
+  audit_logs          AuditLog[]
+  collection          Collection         @relation(fields: [collectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  items               Item[]
+  winnerRecords       ItemWinner[]
+
+  @@map("batch_posts")
+}
+
+model Item {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchPostId       String       @map("batch_post_id") @db.Uuid
+  itemNumber        Int          @map("item_number")
+  metaMediaId       String?      @unique @map("meta_media_id")
+  imageUrl          String       @map("image_url")
+  thumbnailUrl      String       @map("thumbnail_url")
+  sizeLabel         String?      @map("size_label")
+  rawPriceText      String?      @map("raw_price_text")
+  price_map_json    Json?        @default("{}")
+  winner_claim_word String?
+  resolved_price    Decimal?     @db.Decimal(10, 2)
+  needsPriceReview  Boolean?     @default(false) @map("needs_price_review")
+  is_locked         Boolean?     @default(false)
+  createdAt         DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime?    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastSyncedAt      DateTime?    @map("last_synced_at") @db.Timestamptz(6)
+  syncError         String?      @map("sync_error")
+  commentCount      Int?         @default(0) @map("comment_count")
+  collection_id     String?      @db.Uuid
+  status            item_status? @default(unclaimed)
+  raw_media_json    Json?        @default("{}")
+  audit_logs        AuditLog[]
+  comments          Comment[]
+  winner            ItemWinner[]
+  batchPost         BatchPost    @relation(fields: [batchPostId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  collections       Collection?  @relation(fields: [collection_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([collection_id], map: "idx_items_collection_id")
+  @@map("items")
+}
+
+model Comment {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId            String       @map("item_id") @db.Uuid
+  metaCommentId     String?      @unique @map("meta_comment_id")
+  commenterId       String?      @map("commenter_id")
+  commenterName     String       @map("commenter_name")
+  commentText       String       @map("comment_text")
+  normalizedText    String?      @map("normalized_text")
+  claim_type        String?
+  isValidClaim      Boolean?     @default(false) @map("is_valid_claim")
+  isCancelComment   Boolean?     @default(false) @map("is_cancel_comment")
+  is_late_claim     Boolean?     @default(false)
+  is_first_claimant Boolean?     @default(false)
+  commented_at      DateTime     @db.Timestamptz(6)
+  createdAt         DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updated_at        DateTime?    @default(now()) @db.Timestamptz(6)
+  item              Item         @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  winner            ItemWinner[]
+
+  @@map("comments")
+}
+
+model ItemWinner {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId             String    @map("item_id") @db.Uuid
+  batchPostId        String?   @map("batch_post_id") @db.Uuid
+  winnerCommentId    String?   @map("winner_comment_id") @db.Uuid
+  buyerId            String?   @map("buyer_id")
+  commenterId        String?   @map("commenter_id")
+  buyerName          String?   @map("buyer_name")
+  winning_claim_word String?
+  resolvedPrice      Decimal?  @map("resolved_price") @db.Decimal(10, 2)
+  status             winner_status? @default(auto)
+  is_manual_override Boolean?  @default(false)
+  resolved_at        DateTime? @default(now()) @db.Timestamptz(6)
+  created_at         DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime? @default(now()) @db.Timestamptz(6)
+  item               Item      @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batchPost          BatchPost? @relation(fields: [batchPostId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  winnerComment      Comment?  @relation(fields: [winnerCommentId], references: [id], onUpdate: NoAction)
+
+  @@unique([itemId])
+  @@map("item_winners")
+}
+
+model BuyerTotal {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  collectionId String     @map("collection_id") @db.Uuid
+  buyerId      String?    @map("buyer_id")
+  buyerName    String     @map("buyer_name")
+  totalItems   Int?       @default(0) @map("total_items")
+  total_amount Decimal?   @default(0.00) @db.Decimal(12, 2)
+  createdAt    DateTime?  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime?  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("buyer_totals")
+}
+
+model AuditLog {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  collectionId  String?     @map("collection_id") @db.Uuid
+  batch_post_id String?     @db.Uuid
+  itemId        String?     @map("item_id") @db.Uuid
+  action        String
+  actor         String?
+  details       Json?       @default("{}") @map("details_json")
+  createdAt     DateTime?   @default(now()) @map("created_at") @db.Timestamptz(6)
+  reason        String?
+  batch_posts   BatchPost?  @relation(fields: [batch_post_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  collections   Collection? @relation(fields: [collectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  items         Item?       @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("audit_logs")
+}
+
+model settings {
+  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  valid_claim_keywords_json  Json?     @default("[\"mine\", \"grab\", \"steal\"]")
+  cancel_keywords_json       Json?     @default("[\"cancel\", \"pass\", \"mine off\"]")
+  claim_code_mapping_json    Json?     @default("{\"G\": \"grab\", \"M\": \"mine\", \"S\": \"steal\"}")
+  sync_preferences_json      Json?     @default("{\"syncPhotosFirst\": true, \"syncCommentsAfterImport\": true, \"requireThumbnailVerification\": false}")
+  finalization_behavior_json Json?     @default("{\"autoReassignOnCancel\": true, \"lockCollectionOnFinalize\": true, \"requireReviewBeforeFinalize\": true}")
+  created_at                 DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+enum batch_sync_status {
+  not_synced
+  synced
+  syncing
+  error
+}
+
+enum collection_status {
+  draft
+  open
+  finalized
+  locked
+}
+
+enum item_status {
+  unclaimed
+  claimed
+  needs_review
+  manual_override
+  locked
+}
+
+enum winner_status {
+  auto
+  manual
+  review_required
+}

@@ -1,0 +1,430 @@
+import { appendFileSync } from 'node:fs';
+import { getServiceSupabase } from '@/lib/supabase';
+import { BatchSyncStatus, ClaimWord, CollectionListItem, CollectionStatus, CollectionWorkflowDetail, ItemStatus, PriceReviewStatus } from '@/types';
+
+type CollectionListRow = {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  finalize_date?: string;
+  status: CollectionStatus;
+  total_batch_posts?: number;
+  total_items?: number;
+  total_claimed_items?: number;
+  total_needs_review?: number;
+  total_value?: number | string | null;
+  facebook_pages?: {
+    page_name?: string;
+  } | null;
+};
+
+type CollectionDetailCommentRow = {
+  id: string;
+  commenter_id: string;
+  commenter_name: string;
+  comment_text: string;
+  commented_at: string;
+  normalized_text: string;
+  is_valid_claim: boolean;
+  is_cancel_comment: boolean;
+  is_late_claim?: boolean;
+  is_first_claimant?: boolean;
+};
+
+type CollectionDetailWinnerRow = {
+  buyer_id: string;
+  buyer_name: string;
+  resolved_at: string;
+  winning_claim_word?: string | null;
+  resolved_price?: number | string | null;
+  is_manual_override?: boolean;
+};
+
+type CollectionDetailItemRow = {
+  id: string;
+  item_number: number;
+  title?: string;
+  image_url: string;
+  thumbnail_url: string;
+  meta_media_id: string;
+  size_label?: string | null;
+  status: ItemStatus;
+  price_review_status?: string;
+  claim_status?: string;
+  raw_price_text: string;
+  price_map?: Record<string, unknown> | null;
+  needs_price_review?: boolean;
+  comments?: CollectionDetailCommentRow[];
+  item_winners?: CollectionDetailWinnerRow[];
+};
+
+type CollectionDetailBatchRow = {
+  id: string;
+  title: string;
+  posted_at: string;
+  meta_post_id?: string | null;
+  sync_status: string;
+  sync_note?: string;
+  last_synced_at?: string;
+  sync_error?: string | null;
+  total_items?: number;
+  total_claimed_items?: number;
+  total_needs_review?: number;
+  items?: CollectionDetailItemRow[];
+};
+
+type CollectionDetailRow = CollectionListRow & {
+  manual_overrides_count?: number;
+  cancel_items_count?: number;
+  last_synced_at?: string;
+  sync_error?: string | null;
+  batch_posts?: CollectionDetailBatchRow[];
+};
+
+type ItemStatusRow = {
+  status: ItemStatus;
+};
+
+type WinnerMetricsRow = {
+  resolved_price?: number | string | null;
+  buyer_name?: string | null;
+  items?: { status?: ItemStatus | null } | Array<{ status?: ItemStatus | null }> | null;
+};
+
+function getWinnerItemStatus(row: WinnerMetricsRow): ItemStatus | null {
+  if (Array.isArray(row.items)) {
+    return row.items[0]?.status ?? null;
+  }
+
+  return row.items?.status ?? null;
+}
+
+function normalizeBatchSyncStatus(status?: string): BatchSyncStatus {
+  switch (status) {
+    case 'synced':
+      return 'synced';
+    case 'syncing':
+      return 'syncing';
+    case 'error':
+      return 'attention';
+    default:
+      return 'pending';
+  }
+}
+
+function normalizePriceReviewStatus(status?: string | null): PriceReviewStatus {
+  switch (status) {
+    case 'manual_override':
+    case 'locked':
+    case 'needs_review':
+      return status;
+    default:
+      return 'ready';
+  }
+}
+
+function normalizeClaimWord(claimWord?: string | null): ClaimWord | null {
+  switch (claimWord) {
+    case 'mine':
+    case 'grab':
+    case 'steal':
+    case 'm':
+    case 'g':
+    case 's':
+      return claimWord;
+    default:
+      return null;
+  }
+}
+
+export class CollectionRepository {
+  static async listCollections(): Promise<CollectionListItem[]> {
+    const { data, error } = await getServiceSupabase()
+      .from('collections')
+      .select(`
+        *,
+        facebook_pages!inner (
+          page_name
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error listing collections:', error);
+      return [];
+    }
+
+    return (data as CollectionListRow[]).map((col) => ({
+      id: col.id,
+      name: col.name,
+      startDate: col.start_date,
+      endDate: col.end_date,
+      finalizeDate: col.finalize_date,
+      status: col.status,
+      connectedFacebookPage: col.facebook_pages?.page_name || 'Disconnected',
+      totalBatchPosts: col.total_batch_posts || 0,
+      totalItemPhotos: col.total_items || 0,
+      totalClaimedItems: col.total_claimed_items || 0,
+      needsReviewCount: col.total_needs_review || 0,
+      totalCollectionValue: Number(col.total_value ?? 0),
+    }));
+  }
+
+  static async getCollectionById(id: string) {
+    const { data, error } = await getServiceSupabase()
+      .from('collections')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+      
+    if (error) return null;
+    return data;
+  }
+
+  static async getCollectionDetail(id: string): Promise<CollectionWorkflowDetail | null> {
+    const { data, error } = await getServiceSupabase()
+      .from('collections')
+      .select(`
+        *,
+        facebook_pages!inner (
+          page_name
+        ),
+        batch_posts (
+          *,
+          items (
+            *,
+            comments (*),
+            item_winners (*)
+          )
+        )
+      `)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching collection detail:', error);
+      return null;
+    }
+
+    if (!data) return null;
+    const detail = data as CollectionDetailRow;
+
+    // Mapping logic to reconstruct the detailed object
+    return {
+      id: detail.id,
+      name: detail.name,
+      startDate: detail.start_date,
+      endDate: detail.end_date,
+      finalizeDate: detail.finalize_date,
+      status: detail.status,
+      connectedFacebookPage: detail.facebook_pages?.page_name || 'Disconnected',
+      totalBatchPosts: detail.total_batch_posts || 0,
+      totalItemPhotos: detail.total_items || 0,
+      totalClaimedItems: detail.total_claimed_items || 0,
+      needsReviewCount: detail.total_needs_review || 0,
+      totalCollectionValue: Number(detail.total_value ?? 0),
+      manualOverridesCount: detail.manual_overrides_count || 0,
+      cancelItemsCount: detail.cancel_items_count || 0,
+      last_synced_at: detail.last_synced_at,
+      sync_error: detail.sync_error,
+      batches: (detail.batch_posts || []).map((batch) => ({
+        id: batch.id,
+        title: batch.title,
+        postedAt: batch.posted_at,
+        syncStatus: normalizeBatchSyncStatus(batch.sync_status),
+        syncNote: batch.sync_note || '',
+        last_synced_at: batch.last_synced_at,
+        sync_error: batch.sync_error,
+        itemPhotos: batch.total_items || 0,
+        claimedItems: batch.total_claimed_items || 0,
+        needsReviewCount: batch.total_needs_review || 0,
+        items: (Array.isArray(batch.items) ? batch.items : []).map((item) => ({
+          id: item.id,
+          itemNumber: item.item_number,
+          title: item.title || `Item #${item.item_number}`,
+          imageUrl: item.image_url,
+          thumbnailUrl: item.thumbnail_url,
+          photoId: item.meta_media_id,
+          sizeLabel: item.size_label ?? undefined,
+          status: item.status,
+          sourceBatchPostId: batch.id,
+          sourceBatchTitle: batch.title,
+          sourcePostUrl: batch.meta_post_id ? `https://facebook.com/${batch.meta_post_id}` : '',
+          priceReviewStatus: normalizePriceReviewStatus(item.price_review_status),
+          claimStatus: item.claim_status ?? item.status,
+          rawPriceText: item.raw_price_text,
+          priceMap: item.price_map || {},
+          needsPriceReview: item.needs_price_review ?? normalizePriceReviewStatus(item.price_review_status) === 'needs_review',
+          winner: item.item_winners?.[0] ? {
+            buyerId: item.item_winners[0].buyer_id,
+            buyerName: item.item_winners[0].buyer_name,
+            timestamp: item.item_winners[0].resolved_at,
+            claimWord: normalizeClaimWord(item.item_winners[0].winning_claim_word) || 'mine',
+            source: item.item_winners[0].is_manual_override ? 'manual' : 'auto'
+          } : null,
+          winningClaimWord: normalizeClaimWord(item.item_winners?.[0]?.winning_claim_word) || null,
+          resolvedPrice: item.item_winners?.[0] ? Number(item.item_winners[0].resolved_price ?? 0) : null,
+          commentCount: item.comments?.length || 0,
+          hasManualOverride: !!item.item_winners?.[0]?.is_manual_override || item.status === 'manual_override',
+          cancelCount: (item.comments || []).filter((comment) => comment.is_cancel_comment).length,
+          comments: (item.comments || []).map((comment) => ({
+            id: comment.id,
+            buyerId: comment.commenter_id,
+            buyerName: comment.commenter_name,
+            message: comment.comment_text,
+            timestamp: comment.commented_at,
+            normalizedText: comment.normalized_text,
+            isValidClaim: comment.is_valid_claim,
+            isCancelComment: comment.is_cancel_comment,
+            tags: [
+              ...(comment.is_valid_claim ? ['valid claim'] as const : []),
+              ...(comment.is_first_claimant ? ['first claimant'] as const : []),
+              ...(comment.is_late_claim ? ['late claim'] as const : []),
+              ...(comment.is_cancel_comment ? ['cancel comment'] as const : []),
+            ]
+          }))
+        }))
+      }))
+    };
+  }
+
+  static async createCollection(collection: Partial<CollectionWorkflowDetail> & { page_id?: string }): Promise<{ id?: string, error?: string }> {
+    const { data, error } = await getServiceSupabase()
+      .from('collections')
+      .insert({
+          name: collection.name,
+          start_date: collection.startDate,
+          end_date: collection.endDate,
+          status: collection.status || 'open',
+          page_id: collection.page_id,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error creating collection:', error);
+      return { error: error.message };
+    }
+
+    return { id: data.id };
+  }
+
+  static async updateCollectionStatus(id: string, status: string, finalizeDate?: string): Promise<boolean> {
+    const { error } = await getServiceSupabase()
+      .from('collections')
+      .update({ 
+          status,
+          finalize_date: finalizeDate || null
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating collection status:', error);
+      return false;
+    }
+
+    return true;
+  }
+
+  static async updateCollectionMetrics(id: string, metrics: { 
+    totalClaimed?: number, 
+    totalValue?: number, 
+    totalReview?: number,
+    totalBatchPosts?: number,
+    totalItems?: number,
+    last_synced_at?: string,
+    sync_error?: string | null
+  }): Promise<boolean> {
+    const { error } = await getServiceSupabase()
+      .from('collections')
+      .update({ 
+          total_claimed_items: metrics.totalClaimed,
+          total_value: metrics.totalValue,
+          total_needs_review: metrics.totalReview,
+          total_batch_posts: metrics.totalBatchPosts,
+          total_items: metrics.totalItems,
+          last_synced_at: metrics.last_synced_at,
+          sync_error: metrics.sync_error
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating collection metrics:', error);
+      return false;
+    }
+
+    return true;
+  }
+
+  static async recalculateCollectionMetrics(collectionId: string) {
+    const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\sync-diagnostics.log';
+
+    // 1. Count items by status
+    const { data: statusCounts, error: statusError } = await getServiceSupabase()
+      .from('items')
+      .select('status')
+      .eq('collection_id', collectionId);
+
+    if (statusError || !statusCounts) {
+      appendFileSync(logPath, `[RECOUNT] Error fetching item statuses: ${statusError?.message}\n`);
+      return false;
+    }
+
+    const totalItems = statusCounts.length;
+    const totalReview = (statusCounts as ItemStatusRow[]).filter((item) => item.status === 'needs_review').length;
+    
+    const totalClaimed = (statusCounts as ItemStatusRow[]).filter((item) =>
+      item.status === 'claimed' || item.status === 'manual_override' || item.status === 'locked'
+    ).length;
+
+    // 2. Sum resolved prices for trusted claimed items
+    const { data: winners, error: winnersError } = await getServiceSupabase()
+      .from('item_winners')
+      .select('resolved_price, buyer_name, items!inner(collection_id,status)')
+      .eq('items.collection_id', collectionId);
+
+    if (winnersError || !winners) {
+        appendFileSync(logPath, `[RECOUNT] Error fetching winners: ${winnersError?.message}\n`);
+        return false;
+    }
+
+    const totalValue = (winners as WinnerMetricsRow[]).reduce((sum, winner) => {
+      const itemStatus = getWinnerItemStatus(winner);
+      if (!itemStatus || !['claimed', 'manual_override', 'locked'].includes(itemStatus)) {
+        return sum;
+      }
+
+      if (!winner.buyer_name || String(winner.buyer_name).toLowerCase() === 'unknown commenter') {
+        return sum;
+      }
+
+      return sum + Number(winner.resolved_price || 0);
+    }, 0);
+
+    appendFileSync(logPath, `[RECOUNT] Collection ${collectionId}: Items: ${totalItems}, Claimed: ${totalClaimed}, Value: ${totalValue}, Review: ${totalReview}\n`);
+
+    // Update the collection record
+    return await this.updateCollectionMetrics(collectionId, {
+      totalItems,
+      totalClaimed,
+      totalValue,
+      totalReview,
+      last_synced_at: new Date().toISOString()
+    });
+  }
+
+  static async deleteCollection(id: string): Promise<boolean> {
+    const { error } = await getServiceSupabase()
+      .from('collections')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting collection:', error);
+      return false;
+    }
+
+    return true;
+  }
+}

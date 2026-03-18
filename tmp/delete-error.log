@@ -1,0 +1,74 @@
+[2026-03-16T03:28:27.595Z] [deleteCollectionAction] START: 4687692e-9b30-43da-93fa-e9c73e9ae2c0
+[DEBUG] collectionService.deleteCollection result: true
+[2026-03-16T03:28:29.885Z] [deleteCollectionAction] START: f36f1a4b-6af7-4be5-9d5c-541087dc0dea
+[DEBUG] collectionService.deleteCollection result: true
+[2026-03-16T04:32:27.356Z] [deleteCollectionAction] START: 881b40af-aeff-4662-bd4c-b1b294b1c052
+[2026-03-16T04:32:27.357Z] [deleteCollectionAction] EXCEPTION: __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$repositories$2f$collection$2e$repository$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__.CollectionRepository.deleteCollection is not a function
+TypeError: __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$repositories$2f$collection$2e$repository$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__.CollectionRepository.deleteCollection is not a function
+    at CollectionService.deleteCollection (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\[root-of-the-server]__01c6efc0._.js:828:190)
+    at deleteCollectionAction (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\[root-of-the-server]__01c6efc0._.js:1570:189)
+    at K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:3895
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at executeActionAndPrepareForRender (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:3867)
+    at K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:1115
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async handleAction (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:34:23616)
+    at async renderToHTMLOrFlightImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:41:42130)
+    at async doRender (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\node_modules_83f7dc87._.js:8496:28)
+    at async AppPageRouteModule.handleResponse (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:43:64241)
+    at async handleResponse (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\node_modules_83f7dc87._.js:8702:32)
+    at async Module.handler (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\node_modules_83f7dc87._.js:9073:20)
+    at async DevServer.renderToResponseWithComponentsImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1442:9)
+    at async DevServer.renderPageComponent (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1494:24)
+    at async DevServer.renderToResponseImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1544:32)
+    at async DevServer.pipeImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1038:25)
+    at async NextNodeServer.handleCatchallRenderRequest (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\next-server.js:395:17)
+    at async DevServer.handleRequestImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:929:17)
+    at async K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\dev\next-dev-server.js:387:20
+    at async Span.traceAsyncFn (K:\Antigravity Projects\Dayan App\node_modules\next\dist\trace\trace.js:157:20)
+    at async DevServer.handleRequest (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\dev\next-dev-server.js:383:24)
+    at async invokeRender (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\router-server.js:248:21)
+    at async handleRequest (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\router-server.js:447:24)
+    at async requestHandlerImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\router-server.js:496:13)
+    at async Server.requestListener (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\start-server.js:226:13)
+
+[2026-03-16T04:32:59.249Z] [deleteCollectionAction] START: 881b40af-aeff-4662-bd4c-b1b294b1c052
+[2026-03-16T04:32:59.250Z] [deleteCollectionAction] EXCEPTION: __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$repositories$2f$collection$2e$repository$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__.CollectionRepository.deleteCollection is not a function
+TypeError: __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$repositories$2f$collection$2e$repository$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__.CollectionRepository.deleteCollection is not a function
+    at CollectionService.deleteCollection (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\[root-of-the-server]__01c6efc0._.js:828:190)
+    at deleteCollectionAction (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\[root-of-the-server]__01c6efc0._.js:1570:189)
+    at K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:3895
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:63:14)
+    at executeActionAndPrepareForRender (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:3867)
+    at K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:1115
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async handleAction (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:34:23616)
+    at async renderToHTMLOrFlightImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:41:42130)
+    at async doRender (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\node_modules_83f7dc87._.js:8496:28)
+    at async AppPageRouteModule.handleResponse (K:\Antigravity Projects\Dayan App\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:43:64241)
+    at async handleResponse (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\node_modules_83f7dc87._.js:8702:32)
+    at async Module.handler (K:\Antigravity Projects\Dayan App\.next\dev\server\chunks\ssr\node_modules_83f7dc87._.js:9073:20)
+    at async DevServer.renderToResponseWithComponentsImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1442:9)
+    at async DevServer.renderPageComponent (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1494:24)
+    at async DevServer.renderToResponseImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1544:32)
+    at async DevServer.pipeImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:1038:25)
+    at async NextNodeServer.handleCatchallRenderRequest (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\next-server.js:395:17)
+    at async DevServer.handleRequestImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\base-server.js:929:17)
+    at async K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\dev\next-dev-server.js:387:20
+    at async Span.traceAsyncFn (K:\Antigravity Projects\Dayan App\node_modules\next\dist\trace\trace.js:157:20)
+    at async DevServer.handleRequest (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\dev\next-dev-server.js:383:24)
+    at async invokeRender (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\router-server.js:248:21)
+    at async handleRequest (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\router-server.js:447:24)
+    at async requestHandlerImpl (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\router-server.js:496:13)
+    at async Server.requestListener (K:\Antigravity Projects\Dayan App\node_modules\next\dist\server\lib\start-server.js:226:13)
+
+[2026-03-16T04:34:34.249Z] [deleteCollectionAction] START: 881b40af-aeff-4662-bd4c-b1b294b1c052
+[DEBUG] collectionService.deleteCollection result: true
+[2026-03-16T04:48:46.122Z] [deleteCollectionAction] START: a5a722a7-0759-4dc9-b280-257209a2a3bd
+[DEBUG] collectionService.deleteCollection result: true
+[2026-03-16T04:56:44.957Z] [deleteCollectionAction] START: 5482215e-44b1-4918-b9b7-f841ae6f3fff
+[DEBUG] collectionService.deleteCollection result: true
+[2026-03-16T04:56:54.972Z] [deleteCollectionAction] START: 85886ada-8083-47ff-b6a2-e2519f2cbc9f
+[DEBUG] collectionService.deleteCollection result: true
+[2026-03-16T05:07:46.586Z] [deleteCollectionAction] START: 0fa82d7a-c3e3-4589-b16d-89611fffeb5c
+[DEBUG] collectionService.deleteCollection result: true
