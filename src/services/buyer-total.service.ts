@@ -59,6 +59,10 @@ class BuyerTotalService {
     const buyers = new Map<string, BuyerTotalSummary>();
 
     for (const row of rows) {
+      if (row.needsReview) {
+        continue;
+      }
+
       const buyerName = winnerIntegrityService.normalizeBuyerName(row.buyerName);
       const buyerId = winnerIntegrityService.normalizeBuyerId(row.commenterId ?? row.buyerId);
       const resolvedPrice = typeof row.resolvedPrice === "number" ? row.resolvedPrice : null;

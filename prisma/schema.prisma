@@ -21,7 +21,14 @@ model FacebookPage {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   metaPageId     String       @unique @map("meta_page_id")
   pageName       String       @map("page_name")
-  accessToken    String?      @map("access_token")
+  userAccessToken String?     @map("user_access_token")
+  accessToken    String?      @map("page_access_token")
+  pageTasksJson  Json?        @default("[]") @map("page_tasks_json")
+  tokenTypeUsedForSync String? @default("page_access_token") @map("token_type_used_for_sync")
+  tokenLastValidatedAt DateTime? @map("token_last_validated_at") @db.Timestamptz(6)
+  tokenStatus    String?      @default("valid") @map("token_status")
+  connectionStatus String?    @default("active") @map("connection_status")
+  lastSyncError  String?      @map("last_sync_error")
   tokenExpiresAt DateTime?    @map("token_expires_at") @db.Timestamptz(6)
   connectedAt    DateTime?    @default(now()) @map("connected_at") @db.Timestamptz(6)
   created_at     DateTime?    @default(now()) @db.Timestamptz(6)
@@ -116,6 +123,7 @@ model Comment {
   id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   itemId            String       @map("item_id") @db.Uuid
   metaCommentId     String?      @unique @map("meta_comment_id")
+  parentCommentId   String?      @map("parent_comment_id") @db.Uuid
   commenterId       String?      @map("commenter_id")
   commenterName     String       @map("commenter_name")
   commentText       String       @map("comment_text")
@@ -125,11 +133,18 @@ model Comment {
   isCancelComment   Boolean?     @default(false) @map("is_cancel_comment")
   is_late_claim     Boolean?     @default(false)
   is_first_claimant Boolean?     @default(false)
+  isReply           Boolean?     @default(false) @map("is_reply")
+  isPageAuthor      Boolean?     @default(false) @map("is_page_author")
+  rawPayload        Json?        @default("{}") @map("raw_payload_json")
   commented_at      DateTime     @db.Timestamptz(6)
   createdAt         DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
   updated_at        DateTime?    @default(now()) @db.Timestamptz(6)
   item              Item         @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  winner            ItemWinner[]
+  parentComment     Comment?     @relation("CommentReplies", fields: [parentCommentId], references: [id], onUpdate: NoAction)
+  replies           Comment[]    @relation("CommentReplies")
+  winner            ItemWinner[] @relation("WinnerBuyerComment")
+  confirmationFor   ItemWinner[] @relation("WinnerConfirmationReply")
+  parentForWinner   ItemWinner[] @relation("WinnerParentComment")
 
   @@map("comments")
 }
@@ -139,11 +154,18 @@ model ItemWinner {
   itemId             String    @map("item_id") @db.Uuid
   batchPostId        String?   @map("batch_post_id") @db.Uuid
   winnerCommentId    String?   @map("winner_comment_id") @db.Uuid
+  confirmationReplyId String?  @map("confirmation_reply_id") @db.Uuid
+  parentCommentId    String?   @map("parent_comment_id") @db.Uuid
   buyerId            String?   @map("buyer_id")
   commenterId        String?   @map("commenter_id")
   buyerName          String?   @map("buyer_name")
+  buyerCommentMessage String?  @map("buyer_comment_message")
+  confirmationMessage String?  @map("confirmation_message")
   winning_claim_word String?
   resolvedPrice      Decimal?  @map("resolved_price") @db.Decimal(10, 2)
+  pricingSource      String?   @map("pricing_source")
+  needsReview        Boolean?  @default(false) @map("needs_review")
+  reviewReason       String?   @map("review_reason")
   status             winner_status? @default(auto)
   is_manual_override Boolean?  @default(false)
   resolved_at        DateTime? @default(now()) @db.Timestamptz(6)
@@ -151,7 +173,9 @@ model ItemWinner {
   updated_at         DateTime? @default(now()) @db.Timestamptz(6)
   item               Item      @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   batchPost          BatchPost? @relation(fields: [batchPostId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  winnerComment      Comment?  @relation(fields: [winnerCommentId], references: [id], onUpdate: NoAction)
+  winnerComment      Comment?  @relation("WinnerBuyerComment", fields: [winnerCommentId], references: [id], onUpdate: NoAction)
+  confirmationReply  Comment?  @relation("WinnerConfirmationReply", fields: [confirmationReplyId], references: [id], onUpdate: NoAction)
+  parentComment      Comment?  @relation("WinnerParentComment", fields: [parentCommentId], references: [id], onUpdate: NoAction)
 
   @@unique([itemId])
   @@map("item_winners")

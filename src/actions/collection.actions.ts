@@ -10,9 +10,12 @@ import { BatchRepository } from '@/repositories/batch.repository';
 import { CollectionRepository } from '@/repositories/collection.repository';
 import { BuyerTotalRepository } from '@/repositories/buyer-total.repository';
 import { AuditLogRepository } from '@/repositories/audit-log.repository';
+import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
 import { winnerIntegrityService } from '@/services/winner-integrity.service';
+import { confirmedWinnerService } from '@/services/confirmed-winner.service';
 import { appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { revalidatePath } from 'next/cache';
+import { MetaComment } from '@/types';
 
 type TransactionClient = Prisma.TransactionClient;
 type ProcessedComment = ReturnType<typeof claimService.processClaims>['processedComments'][number];
@@ -29,32 +32,61 @@ function getErrorStack(error: unknown) {
   return error instanceof Error ? error.stack ?? '' : '';
 }
 
+function isTokenErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes('access token')
+    || normalized.includes('session has expired')
+    || normalized.includes('oauth')
+    || normalized.includes('permissions error')
+    || normalized.includes('invalid oauth');
+}
+
+async function markPageNeedsReconnect(pageId: string | null | undefined, errorMessage: string) {
+  if (!pageId) {
+    return;
+  }
+
+  await FacebookPageRepository.markPageTokenStatus({
+    pageId,
+    tokenStatus: 'invalid',
+    connectionStatus: 'needs_reconnect',
+    lastSyncError: errorMessage,
+  });
+}
+
 function buildCommentUpsertInputWithExisting(
   itemId: string,
-  comment: ProcessedComment,
+  rawComment: MetaComment,
+  comment: ProcessedComment | null,
   existingComment: ExistingCommentIdentity,
+  parentCommentId: string | null,
 ) {
   const preservedCommenterId =
-    winnerIntegrityService.normalizeBuyerId(comment.buyerId)
+    winnerIntegrityService.normalizeBuyerId(comment?.buyerId ?? rawComment.from?.id ?? null)
     ?? winnerIntegrityService.normalizeBuyerId(existingComment?.commenterId)
     ?? null;
   const preservedCommenterName =
-    winnerIntegrityService.normalizeBuyerName(comment.buyerName)
+    winnerIntegrityService.normalizeBuyerName(comment?.buyerName ?? rawComment.from?.name ?? null)
     ?? winnerIntegrityService.normalizeBuyerName(existingComment?.commenterName)
     ?? winnerIntegrityService.unknownCommenterPlaceholder;
 
   return {
     itemId,
-    metaCommentId: comment.id,
+    metaCommentId: rawComment.id,
+    parentCommentId,
     commenterId: preservedCommenterId,
     commenterName: preservedCommenterName,
-    commentText: comment.message || '',
-    normalizedText: comment.normalizedText || '',
-    isValidClaim: !!comment.isValidClaim,
-    isCancelComment: !!comment.isCancelComment,
-    is_first_claimant: !!comment.is_first_claimant,
-    is_late_claim: !!comment.is_late_claim,
-    commented_at: new Date(comment.timestamp || Date.now()),
+    commentText: rawComment.message || '',
+    normalizedText: comment?.normalizedText || null,
+    claim_type: comment?.claimWord ?? null,
+    isValidClaim: !!comment?.isValidClaim,
+    isCancelComment: !!comment?.isCancelComment,
+    is_first_claimant: !!comment?.is_first_claimant,
+    is_late_claim: !!comment?.is_late_claim,
+    isReply: !!rawComment.isReply,
+    isPageAuthor: !!rawComment.isPageAuthor,
+    rawPayload: rawComment.raw ?? {},
+    commented_at: new Date(rawComment.created_time || Date.now()),
   };
 }
 
@@ -84,6 +116,44 @@ async function updateItemClaimState(
 function shouldTraceItem(itemId: string, hasIssue = false) {
   const traceItemId = process.env.BUYER_TOTAL_TRACE_ITEM_ID?.trim();
   return hasIssue || (!!traceItemId && traceItemId === itemId);
+}
+
+function hasCommentSourceMetadata(rawMedia: unknown) {
+  if (!rawMedia || typeof rawMedia !== 'object') {
+    return false;
+  }
+
+  const typedRawMedia = rawMedia as Record<string, unknown>;
+  return [
+    typedRawMedia.attachmentId,
+    typedRawMedia.attachmentTargetId,
+    typedRawMedia.subattachmentTargetId,
+  ].some((value) => typeof value === 'string' && value.trim().length > 0);
+}
+
+async function backfillRawMediaByBatchPost(params: {
+  batchPostId: string | null | undefined;
+  accessToken: string;
+  itemId: string;
+  metaMediaId: string;
+  currentRawMedia: unknown;
+}) {
+  if (!params.batchPostId || hasCommentSourceMetadata(params.currentRawMedia)) {
+    return params.currentRawMedia;
+  }
+
+  const mediaItems = await metaService.getPostMedia(params.batchPostId, params.accessToken);
+  const matchedMedia = mediaItems.find((media) => media.id === params.metaMediaId);
+  if (!matchedMedia?.raw || !hasCommentSourceMetadata(matchedMedia.raw)) {
+    return params.currentRawMedia;
+  }
+
+  await prisma.item.update({
+    where: { id: params.itemId },
+    data: { raw_media_json: matchedMedia.raw },
+  });
+
+  return matchedMedia.raw;
 }
 
 /**
@@ -209,6 +279,14 @@ export async function syncBatchCommentsAction(batchId: string) {
         appendFileSync(logPath, `[ACTION] Skip: Item ${item.id} has no metaMediaId\n`);
         continue;
       }
+
+      const rawMedia = await backfillRawMediaByBatchPost({
+        batchPostId: batch.metaPostId,
+        accessToken: accessToken as string,
+        itemId: item.id,
+        metaMediaId: item.metaMediaId,
+        currentRawMedia: item.raw_media_json,
+      });
       
       appendFileSync(logPath, `[ACTION] Syncing comments for item ${item.id} (media: ${item.metaMediaId})\n`);
       
@@ -216,7 +294,7 @@ export async function syncBatchCommentsAction(batchId: string) {
         pageId: batch.collection.page.metaPageId,
         batchPostId: batch.metaPostId,
         itemId: item.id,
-        rawMedia: item.raw_media_json,
+        rawMedia,
       });
       appendFileSync(logPath, `[ACTION] Item ${item.id}: Fetched ${comments.length} raw comments\n`);
       const traceRawComments = shouldTraceItem(item.id);
@@ -226,10 +304,22 @@ export async function syncBatchCommentsAction(batchId: string) {
         });
       }
       
-      appendFileSync(logPath, `[ACTION] Item ${item.id}: Processing ${comments.length} comments with claimService\n`);
+      const topLevelComments = comments.filter((comment) => !comment.parentCommentId);
+      appendFileSync(logPath, `[ACTION] Item ${item.id}: Processing ${topLevelComments.length} top-level comments with claimService\n`);
       appendFileSync(logPath, `[DEBUG] Current Settings - Valid: ${JSON.stringify(settings.validClaimKeywords)}, Cancel: ${JSON.stringify(settings.cancelKeywords)}\n`);
       
-      const { winner, needsReview, processedComments } = claimService.processClaims(comments, settings);
+      const { needsReview, processedComments } = claimService.processClaims(topLevelComments, settings);
+      const provisionalCommentsById = new Map(processedComments.map((comment) => [comment.id, comment]));
+      const confirmedWinner = confirmedWinnerService.resolveWinner({
+        itemId: item.id,
+        batchPostId: item.batchPostId,
+        pageId: batch.collection.page.metaPageId,
+        comments,
+        provisionalComments: processedComments,
+        pictureLevelPriceText: item.rawPriceText,
+        postLevelPriceText: batch.caption,
+        claimCodeMapping: settings.claimCodeMapping,
+      });
       
       processedComments.forEach(pc => {
         appendFileSync(logPath, `[DEBUG] TRACTOR: Msg: "${pc.message}" | normalized: "${pc.normalizedText}" | isValid: ${pc.isValidClaim} | tags: ${pc.tags.join(',')}\n`);
@@ -252,33 +342,52 @@ export async function syncBatchCommentsAction(batchId: string) {
       });
 
       const validClaims = processedComments.filter(c => c && c.isValidClaim).length;
-      appendFileSync(logPath, `[ACTION] Item ${item.id}: claimService returned ${processedComments.length} processed comments. Valid Claims: ${validClaims}. Winner detected: ${!!winner}\n`);
+      appendFileSync(logPath, `[ACTION] Item ${item.id}: claimService returned ${processedComments.length} provisional comments. Valid Claims: ${validClaims}. Confirmed winner detected: ${!!confirmedWinner.winner}\n`);
 
       await prisma.$transaction(async (tx: TransactionClient) => {
         // 1. Save all comments
-        for (const pc of processedComments) {
-          if (!pc || !pc.id) {
+        const commentDbIdByMetaId = new Map<string, string>();
+        for (const rawComment of comments) {
+          if (!rawComment || !rawComment.id) {
              appendFileSync(logPath, `[WARN] Skipping null or invalid comment for item ${item.id}\n`);
              continue;
           }
           
-          appendFileSync(logPath, `[DEBUG] Upserting comment ${pc.id} for item ${item.id}\n`);
+          appendFileSync(logPath, `[DEBUG] Upserting comment ${rawComment.id} for item ${item.id}\n`);
           try {
             const existingComment = await tx.comment.findUnique({
-              where: { metaCommentId: pc.id },
+              where: { metaCommentId: rawComment.id },
               select: {
+                id: true,
                 commenterId: true,
                 commenterName: true,
               },
             });
-            const commentData = buildCommentUpsertInputWithExisting(item.id, pc, existingComment);
-            await tx.comment.upsert({
-              where: { metaCommentId: pc.id },
+            const persistedParentComment =
+              rawComment.parentCommentId
+                ? await tx.comment.findUnique({
+                    where: { metaCommentId: rawComment.parentCommentId },
+                    select: { id: true },
+                  })
+                : null;
+            const commentData = buildCommentUpsertInputWithExisting(
+              item.id,
+              rawComment,
+              provisionalCommentsById.get(rawComment.id) ?? null,
+              existingComment,
+              rawComment.parentCommentId
+                ? commentDbIdByMetaId.get(rawComment.parentCommentId) ?? persistedParentComment?.id ?? null
+                : null,
+            );
+            const savedComment = await tx.comment.upsert({
+              where: { metaCommentId: rawComment.id },
               create: commentData,
               update: commentData,
+              select: { id: true, metaCommentId: true },
             });
+            commentDbIdByMetaId.set(savedComment.metaCommentId ?? rawComment.id, savedComment.id);
           } catch (upsertError) {
-            appendFileSync(logPath, `[ERROR] Failed to upsert comment ${pc.id}: ${getErrorMessage(upsertError)}\n`);
+            appendFileSync(logPath, `[ERROR] Failed to upsert comment ${rawComment.id}: ${getErrorMessage(upsertError)}\n`);
           }
         }
 
@@ -286,39 +395,41 @@ export async function syncBatchCommentsAction(batchId: string) {
         await tx.itemWinner.deleteMany({ where: { itemId: item.id } });
 
         // 3. Save winner and update item
-        if (winner) {
+        if (confirmedWinner.winner) {
           totalWinnersDetected++;
 
-          appendFileSync(logPath, `[ACTION] Item ${item.id}: Assigning winner ${winner.buyerName ?? 'missing buyer name'} (MetaID: ${winner.winnerCommentId})\n`);
+          appendFileSync(logPath, `[ACTION] Item ${item.id}: Assigning confirmed winner ${confirmedWinner.winner.buyerName} via reply ${confirmedWinner.winner.confirmationReplyMetaId}\n`);
 
-          // CRITICAL: winner.winnerCommentId is the Meta ID. We need the database UUID.
-          const dbComment = await tx.comment.findUnique({
-            where: { metaCommentId: winner.winnerCommentId },
-            select: { id: true, commenterId: true, commenterName: true }
+          const parentComment = await tx.comment.findUnique({
+            where: { metaCommentId: confirmedWinner.winner.parentCommentMetaId },
+            select: { id: true, commenterId: true, commenterName: true, commentText: true },
+          });
+          const confirmationReply = await tx.comment.findUnique({
+            where: { metaCommentId: confirmedWinner.winner.confirmationReplyMetaId },
+            select: { id: true, commentText: true },
           });
 
-          if (!dbComment) {
-            appendFileSync(logPath, `[ERROR] Item ${item.id}: Could not find internal database ID for comment ${winner.winnerCommentId}. Skipping winner creation.\n`);
+          if (!parentComment || !confirmationReply) {
+            appendFileSync(logPath, `[ERROR] Item ${item.id}: Could not find internal database IDs for confirmed winner comments.\n`);
           } else {
-            const integrity = winnerIntegrityService.buildWinnerRecordIntegrity({
-              buyerId: winner.buyerId,
-              buyerName: winner.buyerName,
-              buyerNameMissingReason: winner.buyerNameMissingReason,
-              fallbackCommenterId: dbComment.commenterId,
-              fallbackBuyerName: dbComment.commenterName,
-              winningClaimWord: winner.keyword,
-              rawPriceText: item.rawPriceText || '',
-              claimCodeMapping: settings.claimCodeMapping,
-              batchPostId: item.batchPostId,
-            });
-            const requiresManualReview = !!integrity.dataIssue || needsReview;
-            const needsPriceReview = !!integrity.pricingIssue;
+            const requiresManualReview = confirmedWinner.winner.needsReview || needsReview;
+            const needsPriceReview = confirmedWinner.winner.resolvedPrice === null;
             const traceWinner = shouldTraceItem(item.id, requiresManualReview || needsPriceReview);
-            if (integrity.dataIssue) {
-              appendFileSync(logPath, `[DATA_ISSUE] Item ${item.id}: ${integrity.dataIssue}\n`);
+            if (confirmedWinner.winner.reviewReason) {
+              appendFileSync(logPath, `[REVIEW] Item ${item.id}: ${confirmedWinner.winner.reviewReason}\n`);
             }
-            if (integrity.pricingIssue) {
-              appendFileSync(logPath, `[PRICING_ISSUE] Item ${item.id}: ${integrity.pricingIssue}\n`);
+
+            if (
+              winnerIntegrityService.normalizeBuyerName(parentComment.commenterName) === null
+              && confirmedWinner.winner.buyerName.trim().length > 0
+            ) {
+              await tx.comment.update({
+                where: { id: parentComment.id },
+                data: {
+                  commenterName: confirmedWinner.winner.buyerName,
+                  commenterId: parentComment.commenterId ?? confirmedWinner.winner.buyerFacebookId,
+                },
+              });
             }
 
             await tx.itemWinner.create({
@@ -327,14 +438,29 @@ export async function syncBatchCommentsAction(batchId: string) {
                   connect: { id: item.id },
                 },
                 winnerComment: {
-                  connect: { id: dbComment.id },
+                  connect: { id: parentComment.id },
                 },
-                buyerId: integrity.buyerId,
-                commenterId: integrity.commenterId,
-                buyerName: integrity.buyerName,
-                winning_claim_word: integrity.winningClaimWord,
-                resolvedPrice: integrity.resolvedPrice,
+                parentComment: {
+                  connect: { id: parentComment.id },
+                },
+                confirmationReply: {
+                  connect: { id: confirmationReply.id },
+                },
+                buyerId: confirmedWinner.winner.buyerFacebookId,
+                commenterId: confirmedWinner.winner.buyerFacebookId,
+                buyerName: confirmedWinner.winner.buyerName,
+                buyerCommentMessage: confirmedWinner.winner.buyerCommentMessage,
+                confirmationMessage: confirmedWinner.winner.confirmationMessage,
+                winning_claim_word: confirmedWinner.winner.claimWord,
+                resolvedPrice: confirmedWinner.winner.resolvedPrice,
+                pricingSource: confirmedWinner.winner.pricingSource,
+                needsReview: requiresManualReview,
+                reviewReason: confirmedWinner.winner.reviewReason,
+                batchPost: {
+                  connect: { id: item.batchPostId },
+                },
                 status: requiresManualReview ? 'review_required' : 'auto',
+                resolved_at: new Date(confirmedWinner.winner.confirmedAt),
               },
             });
 
@@ -342,23 +468,30 @@ export async function syncBatchCommentsAction(batchId: string) {
               tx,
               item.id,
               requiresManualReview ? 'needs_review' : 'claimed',
-              integrity.resolvedPrice,
-              integrity.winningClaimWord,
-              integrity.dataIssue ?? integrity.pricingIssue,
+              confirmedWinner.winner.resolvedPrice,
+              confirmedWinner.winner.claimWord,
+              confirmedWinner.winner.reviewReason,
               needsPriceReview,
             );
 
             if (traceWinner) {
               appendSyncTrace(`item:${item.id}:winner_assigned`, {
-                winner,
-                dbComment,
-                integrity,
+                winner: confirmedWinner.winner,
+                parentComment,
+                confirmationReply,
               });
             }
           }
         } else {
-          appendFileSync(logPath, `[DEBUG] Item ${item.id}: No winner, setting to unclaimed\n`);
-          await updateItemClaimState(tx, item.id, 'unclaimed', null, null, null);
+          appendFileSync(logPath, `[DEBUG] Item ${item.id}: No confirmed winner found\n`);
+          await updateItemClaimState(
+            tx,
+            item.id,
+            confirmedWinner.needsReview ? 'needs_review' : 'unclaimed',
+            null,
+            null,
+            confirmedWinner.reviewReason,
+          );
         }
       });
     }
@@ -383,7 +516,16 @@ export async function syncBatchCommentsAction(batchId: string) {
     return { success: true, winnersCount: totalWinnersDetected };
   } catch (error) {
     let errorMessage = getErrorMessage(error);
-    if (errorMessage.toLowerCase().includes('access token') || errorMessage.toLowerCase().includes('session has expired')) {
+    if (isTokenErrorMessage(errorMessage)) {
+      const fallbackBatch = await prisma.batchPost.findUnique({
+        where: { id: batchId },
+        include: {
+          collection: {
+            include: { page: true },
+          },
+        },
+      });
+      await markPageNeedsReconnect(fallbackBatch?.collection.page?.metaPageId ?? null, errorMessage);
       errorMessage = 'Facebook Session Expired: Please go to Settings and reconnect your Facebook Page.';
     }
     
@@ -421,19 +563,39 @@ export async function syncItemClaims(itemId: string) {
     const page = item.batchPost.collection.page;
     if (!page?.accessToken) throw new Error('Facebook Page access token not found');
 
+    const rawMedia = await backfillRawMediaByBatchPost({
+      batchPostId: item.batchPost.metaPostId,
+      accessToken: page.accessToken,
+      itemId,
+      metaMediaId: item.metaMediaId,
+      currentRawMedia: item.raw_media_json,
+    });
+
     const comments = await metaService.getMediaComments(item.metaMediaId, page.accessToken, {
       pageId: page.metaPageId,
       batchPostId: item.batchPost.metaPostId,
       itemId,
-      rawMedia: item.raw_media_json,
+      rawMedia,
     });
     const settings = await settingsService.getSettings();
     if (shouldTraceItem(itemId)) {
       comments.forEach((comment) => appendSyncTrace(`item:${itemId}:raw_comment`, comment));
     }
 
-    const { winner, needsReview, processedComments } = claimService.processClaims(comments, settings);
-    appendFileSync(logPath, `[ACTION] Item ${itemId}: claimService returned ${processedComments.length} comments. Winner: ${winner?.buyerName || 'none'}\n`);
+    const topLevelComments = comments.filter((comment) => !comment.parentCommentId);
+    const { needsReview, processedComments } = claimService.processClaims(topLevelComments, settings);
+    const provisionalCommentsById = new Map(processedComments.map((comment) => [comment.id, comment]));
+    const confirmedWinner = confirmedWinnerService.resolveWinner({
+      itemId,
+      batchPostId: item.batchPostId,
+      pageId: page.metaPageId,
+      comments,
+      provisionalComments: processedComments,
+      pictureLevelPriceText: item.rawPriceText,
+      postLevelPriceText: item.batchPost.caption,
+      claimCodeMapping: settings.claimCodeMapping,
+    });
+    appendFileSync(logPath, `[ACTION] Item ${itemId}: claimService returned ${processedComments.length} provisional comments. Confirmed winner: ${confirmedWinner.winner?.buyerName || 'none'}\n`);
     processedComments.forEach((pc) => {
       if (pc.buyerNameMissingReason) {
         appendFileSync(logPath, `[DATA_ISSUE] Item ${itemId}: Comment ${pc.id} buyer_name missing. ${pc.buyerNameMissingReason}\n`);
@@ -456,25 +618,44 @@ export async function syncItemClaims(itemId: string) {
     // Use transaction to save comments and winner
     const result = await prisma.$transaction(async (tx: TransactionClient) => {
       // 1. Save all comments
-      for (const pc of processedComments) {
-        if (!pc || !pc.id) continue;
+      const commentDbIdByMetaId = new Map<string, string>();
+      for (const rawComment of comments) {
+        if (!rawComment || !rawComment.id) continue;
         
         try {
           const existingComment = await tx.comment.findUnique({
-            where: { metaCommentId: pc.id },
+            where: { metaCommentId: rawComment.id },
             select: {
+              id: true,
               commenterId: true,
               commenterName: true,
             },
           });
-          const commentData = buildCommentUpsertInputWithExisting(itemId, pc, existingComment);
-          await tx.comment.upsert({
-            where: { metaCommentId: pc.id },
+          const persistedParentComment =
+            rawComment.parentCommentId
+              ? await tx.comment.findUnique({
+                  where: { metaCommentId: rawComment.parentCommentId },
+                  select: { id: true },
+                })
+              : null;
+          const commentData = buildCommentUpsertInputWithExisting(
+            itemId,
+            rawComment,
+            provisionalCommentsById.get(rawComment.id) ?? null,
+            existingComment,
+            rawComment.parentCommentId
+              ? commentDbIdByMetaId.get(rawComment.parentCommentId) ?? persistedParentComment?.id ?? null
+              : null,
+          );
+          const savedComment = await tx.comment.upsert({
+            where: { metaCommentId: rawComment.id },
             create: commentData,
             update: commentData,
+            select: { id: true, metaCommentId: true },
           });
+          commentDbIdByMetaId.set(savedComment.metaCommentId ?? rawComment.id, savedComment.id);
         } catch (upsertError) {
-          appendFileSync(logPath, `[ERROR] Failed to upsert comment ${pc.id} in syncItemClaims: ${getErrorMessage(upsertError)}\n`);
+          appendFileSync(logPath, `[ERROR] Failed to upsert comment ${rawComment.id} in syncItemClaims: ${getErrorMessage(upsertError)}\n`);
         }
       }
 
@@ -482,35 +663,38 @@ export async function syncItemClaims(itemId: string) {
       await tx.itemWinner.deleteMany({ where: { itemId } });
 
       // 3. Save winner if exists
-      if (winner) {
-        appendFileSync(logPath, `[ACTION] Item ${itemId}: Assigning winner ${winner.buyerName ?? 'missing buyer name'} (MetaID: ${winner.winnerCommentId})\n`);
+      if (confirmedWinner.winner) {
+        appendFileSync(logPath, `[ACTION] Item ${itemId}: Assigning confirmed winner ${confirmedWinner.winner.buyerName} via reply ${confirmedWinner.winner.confirmationReplyMetaId}\n`);
 
-        const dbComment = await tx.comment.findUnique({
-          where: { metaCommentId: winner.winnerCommentId },
-          select: { id: true, commenterId: true, commenterName: true }
+        const parentComment = await tx.comment.findUnique({
+          where: { metaCommentId: confirmedWinner.winner.parentCommentMetaId },
+          select: { id: true, commenterId: true, commenterName: true, commentText: true },
+        });
+        const confirmationReply = await tx.comment.findUnique({
+          where: { metaCommentId: confirmedWinner.winner.confirmationReplyMetaId },
+          select: { id: true, commentText: true },
         });
 
-        if (!dbComment) {
-          appendFileSync(logPath, `[ERROR] Item ${itemId}: Could not find internal database ID for comment ${winner.winnerCommentId} in syncItemClaims.\n`);
+        if (!parentComment || !confirmationReply) {
+          appendFileSync(logPath, `[ERROR] Item ${itemId}: Could not find internal database IDs for confirmed winner in syncItemClaims.\n`);
         } else {
-          const integrity = winnerIntegrityService.buildWinnerRecordIntegrity({
-            buyerId: winner.buyerId,
-            buyerName: winner.buyerName,
-            buyerNameMissingReason: winner.buyerNameMissingReason,
-            fallbackCommenterId: dbComment.commenterId,
-            fallbackBuyerName: dbComment.commenterName,
-            winningClaimWord: winner.keyword,
-            rawPriceText: item.rawPriceText || '',
-            claimCodeMapping: settings.claimCodeMapping,
-            batchPostId: item.batchPostId,
-          });
-          const requiresManualReview = !!integrity.dataIssue || needsReview;
-          const needsPriceReview = !!integrity.pricingIssue;
-          if (integrity.dataIssue) {
-            appendFileSync(logPath, `[DATA_ISSUE] Item ${itemId}: ${integrity.dataIssue}\n`);
+          const requiresManualReview = confirmedWinner.winner.needsReview || needsReview;
+          const needsPriceReview = confirmedWinner.winner.resolvedPrice === null;
+          if (confirmedWinner.winner.reviewReason) {
+            appendFileSync(logPath, `[REVIEW] Item ${itemId}: ${confirmedWinner.winner.reviewReason}\n`);
           }
-          if (integrity.pricingIssue) {
-            appendFileSync(logPath, `[PRICING_ISSUE] Item ${itemId}: ${integrity.pricingIssue}\n`);
+
+          if (
+            winnerIntegrityService.normalizeBuyerName(parentComment.commenterName) === null
+            && confirmedWinner.winner.buyerName.trim().length > 0
+          ) {
+            await tx.comment.update({
+              where: { id: parentComment.id },
+              data: {
+                commenterName: confirmedWinner.winner.buyerName,
+                commenterId: parentComment.commenterId ?? confirmedWinner.winner.buyerFacebookId,
+              },
+            });
           }
 
           await tx.itemWinner.create({
@@ -519,14 +703,29 @@ export async function syncItemClaims(itemId: string) {
                 connect: { id: itemId },
               },
               winnerComment: {
-                connect: { id: dbComment.id },
+                connect: { id: parentComment.id },
               },
-              buyerId: integrity.buyerId,
-              commenterId: integrity.commenterId,
-              buyerName: integrity.buyerName,
-              winning_claim_word: integrity.winningClaimWord,
-              resolvedPrice: integrity.resolvedPrice,
+              parentComment: {
+                connect: { id: parentComment.id },
+              },
+              confirmationReply: {
+                connect: { id: confirmationReply.id },
+              },
+              buyerId: confirmedWinner.winner.buyerFacebookId,
+              commenterId: confirmedWinner.winner.buyerFacebookId,
+              buyerName: confirmedWinner.winner.buyerName,
+              buyerCommentMessage: confirmedWinner.winner.buyerCommentMessage,
+              confirmationMessage: confirmedWinner.winner.confirmationMessage,
+              winning_claim_word: confirmedWinner.winner.claimWord,
+              resolvedPrice: confirmedWinner.winner.resolvedPrice,
+              pricingSource: confirmedWinner.winner.pricingSource,
+              needsReview: requiresManualReview,
+              reviewReason: confirmedWinner.winner.reviewReason,
               status: requiresManualReview ? 'review_required' : 'auto',
+              batchPost: {
+                connect: { id: item.batchPostId },
+              },
+              resolved_at: new Date(confirmedWinner.winner.confirmedAt),
             },
           });
 
@@ -534,23 +733,30 @@ export async function syncItemClaims(itemId: string) {
             tx,
             itemId,
             requiresManualReview ? 'needs_review' : 'claimed',
-            integrity.resolvedPrice,
-            integrity.winningClaimWord,
-            integrity.dataIssue ?? integrity.pricingIssue,
+            confirmedWinner.winner.resolvedPrice,
+            confirmedWinner.winner.claimWord,
+            confirmedWinner.winner.reviewReason,
             needsPriceReview,
           );
 
           if (shouldTraceItem(itemId, requiresManualReview || needsPriceReview)) {
             appendSyncTrace(`item:${itemId}:winner_assigned`, {
-              winner,
-              dbComment,
-              integrity,
+              winner: confirmedWinner.winner,
+              parentComment,
+              confirmationReply,
             });
           }
         }
       } else {
-        appendFileSync(logPath, `[DEBUG] Item ${itemId}: Setting to unclaimed in syncItemClaims\n`);
-        await updateItemClaimState(tx, itemId, 'unclaimed', null, null, null);
+        appendFileSync(logPath, `[DEBUG] Item ${itemId}: No confirmed winner in syncItemClaims\n`);
+        await updateItemClaimState(
+          tx,
+          itemId,
+          confirmedWinner.needsReview ? 'needs_review' : 'unclaimed',
+          null,
+          null,
+          confirmedWinner.reviewReason,
+        );
       }
 
       // 4. Update aggregates
@@ -567,7 +773,7 @@ export async function syncItemClaims(itemId: string) {
       // Recalculate metrics
       await CollectionRepository.recalculateCollectionMetrics(collectionId);
 
-      return { success: true, winner };
+      return { success: true, winner: confirmedWinner.winner };
     });
 
     revalidatePath(`/collections/${item.batchPost.collectionId}`);
@@ -579,7 +785,23 @@ export async function syncItemClaims(itemId: string) {
   } catch (error) {
     appendFileSync(logPath, `[ACTION] syncItemClaims ERROR: ${getErrorMessage(error)}\n`);
     console.error('Error syncing item claims:', error);
-    return { success: false, error: getErrorMessage(error) };
+    const errorMessage = getErrorMessage(error);
+    if (isTokenErrorMessage(errorMessage)) {
+      const item = await prisma.item.findUnique({
+        where: { id: itemId },
+        include: {
+          batchPost: {
+            include: {
+              collection: {
+                include: { page: true },
+              },
+            },
+          },
+        },
+      });
+      await markPageNeedsReconnect(item?.batchPost.collection.page?.metaPageId ?? null, errorMessage);
+    }
+    return { success: false, error: errorMessage };
   }
 }
 

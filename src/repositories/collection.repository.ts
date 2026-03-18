@@ -89,6 +89,7 @@ type ItemStatusRow = {
 type WinnerMetricsRow = {
   resolved_price?: number | string | null;
   buyer_name?: string | null;
+  needs_review?: boolean | null;
   items?: { status?: ItemStatus | null } | Array<{ status?: ItemStatus | null }> | null;
 };
 
@@ -264,7 +265,10 @@ export class CollectionRepository {
             source: item.item_winners[0].is_manual_override ? 'manual' : 'auto'
           } : null,
           winningClaimWord: normalizeClaimWord(item.item_winners?.[0]?.winning_claim_word) || null,
-          resolvedPrice: item.item_winners?.[0] ? Number(item.item_winners[0].resolved_price ?? 0) : null,
+          resolvedPrice:
+            item.item_winners?.[0] && item.item_winners[0].resolved_price !== null
+              ? Number(item.item_winners[0].resolved_price)
+              : null,
           commentCount: item.comments?.length || 0,
           hasManualOverride: !!item.item_winners?.[0]?.is_manual_override || item.status === 'manual_override',
           cancelCount: (item.comments || []).filter((comment) => comment.is_cancel_comment).length,
@@ -381,7 +385,7 @@ export class CollectionRepository {
     // 2. Sum resolved prices for trusted claimed items
     const { data: winners, error: winnersError } = await getServiceSupabase()
       .from('item_winners')
-      .select('resolved_price, buyer_name, items!inner(collection_id,status)')
+      .select('resolved_price, buyer_name, needs_review, items!inner(collection_id,status)')
       .eq('items.collection_id', collectionId);
 
     if (winnersError || !winners) {
@@ -396,6 +400,10 @@ export class CollectionRepository {
       }
 
       if (!winner.buyer_name || String(winner.buyer_name).toLowerCase() === 'unknown commenter') {
+        return sum;
+      }
+
+      if ('needs_review' in winner && winner.needs_review) {
         return sum;
       }
 

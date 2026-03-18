@@ -24,7 +24,7 @@ export class SettingsRepository {
     // Fetch connected page info if available
     const { data: pageData } = await supabase
       .from('facebook_pages')
-      .select('page_name, token_expires_at')
+      .select('page_name, token_expires_at, token_status, connection_status')
       .limit(1)
       .maybeSingle();
 
@@ -47,7 +47,7 @@ export class SettingsRepository {
         syncIntervalLabel: "Every 5 minutes",
         autoSyncComments: true,
         importOnlyCollectionDateRange: true,
-        isTokenExpired,
+        isTokenExpired: isTokenExpired || pageData?.token_status === 'invalid' || pageData?.connection_status === 'needs_reconnect',
       }
     };
   }

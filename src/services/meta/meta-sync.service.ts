@@ -17,6 +17,27 @@ export class MetaSyncService {
     return error instanceof Error ? error.message : 'Unknown sync error';
   }
 
+  private static isTokenError(message: string) {
+    const normalized = message.toLowerCase();
+    return normalized.includes('access token')
+      || normalized.includes('session has expired')
+      || normalized.includes('oauth')
+      || normalized.includes('permissions');
+  }
+
+  private static async markPageNeedsReconnect(pageId: string | null | undefined, errorMessage: string) {
+    if (!pageId) {
+      return;
+    }
+
+    await FacebookPageRepository.markPageTokenStatus({
+      pageId,
+      tokenStatus: 'invalid',
+      connectionStatus: 'needs_reconnect',
+      lastSyncError: errorMessage,
+    });
+  }
+
   /**
    * Syncs batch posts for a collection from a specific date range.
    */
@@ -126,6 +147,7 @@ export class MetaSyncService {
           last_synced_at: new Date().toISOString(),
           sync_error: syncError
       });
+      await FacebookPageRepository.markSyncSuccess(page.id);
 
       return { 
         success: true, 
@@ -135,6 +157,11 @@ export class MetaSyncService {
     } catch (error) {
       console.error('Collection Sync Error:', error);
       const message = this.getErrorMessage(error);
+      const collection = await CollectionRepository.getCollectionById(collectionId);
+      if (this.isTokenError(message)) {
+        const page = collection?.page_id ? await FacebookPageRepository.getPageById(collection.page_id) : null;
+        await this.markPageNeedsReconnect(page?.id ?? null, message);
+      }
       await CollectionRepository.updateCollectionMetrics(collectionId, {
           sync_error: message
       });
@@ -212,11 +239,15 @@ export class MetaSyncService {
           last_synced_at: new Date().toISOString(),
           sync_error: null
       });
+      await FacebookPageRepository.markSyncSuccess(page.id);
 
       return true;
     } catch (error) {
       console.error('Batch Sync Deep Error:', error);
       const message = this.getErrorMessage(error);
+      if (this.isTokenError(message)) {
+        await this.markPageNeedsReconnect(page.id, message);
+      }
       await BatchRepository.updateSyncStatus(batchId, 'error');
       await BatchRepository.updateBatchSyncMetadata(batchId, {
           sync_error: message

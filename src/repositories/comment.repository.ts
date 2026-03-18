@@ -23,6 +23,14 @@ type CommentInsertInput = {
   is_late_claim?: boolean | null;
   isFirstClaimant?: boolean | null;
   is_first_claimant?: boolean | null;
+  parentCommentId?: string | null;
+  parent_comment_id?: string | null;
+  isReply?: boolean | null;
+  is_reply?: boolean | null;
+  isPageAuthor?: boolean | null;
+  is_page_author?: boolean | null;
+  rawPayload?: unknown;
+  raw_payload_json?: unknown;
   commentedAt?: string;
   commented_at?: string;
 };
@@ -42,6 +50,10 @@ export class CommentRepository {
         is_cancel_comment: c.isCancelComment ?? c.is_cancel_comment,
         is_late_claim: c.isLateClaim ?? c.is_late_claim,
         is_first_claimant: c.isFirstClaimant ?? c.is_first_claimant,
+        parent_comment_id: c.parentCommentId ?? c.parent_comment_id ?? null,
+        is_reply: c.isReply ?? c.is_reply ?? false,
+        is_page_author: c.isPageAuthor ?? c.is_page_author ?? false,
+        raw_payload_json: c.rawPayload ?? c.raw_payload_json ?? {},
         commented_at: c.commentedAt ?? c.commented_at,
       }))
     );

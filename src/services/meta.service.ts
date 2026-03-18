@@ -36,6 +36,17 @@ type CommentSourceCandidate = {
   useForSync: boolean;
 };
 
+type CommentFetchResult = {
+  candidate: CommentSourceCandidate;
+  endpoint: string;
+  comments: MetaComment[];
+  commentsWithAuthorName: number;
+  commentsWithoutFrom: number;
+  commentsWithoutAuthorId: number;
+  commentsWithoutAuthorName: number;
+  error: string | null;
+};
+
 type CommentFetchContext = {
   pageId?: string;
   batchPostId?: string | null;
@@ -43,7 +54,17 @@ type CommentFetchContext = {
   rawMedia?: unknown;
 };
 
-const COMMENT_FIELDS = 'id,message,created_time,from{id,name}';
+type MetaCommentPayload = MetaComment & {
+  parent?: {
+    id?: string;
+    message?: string | null;
+  } | null;
+  comments?: {
+    data?: Array<MetaCommentPayload | null> | null;
+  } | null;
+};
+
+const COMMENT_FIELDS = 'id,message,created_time,from{id,name},parent{id,message},comments.limit(100){id,message,created_time,from{id,name},parent{id,message}}';
 
 export class MetaService {
   private baseUrl = 'https://graph.facebook.com/v19.0';
@@ -153,7 +174,7 @@ export class MetaService {
     try {
       const tokenInspection = await inspectMetaAccessToken(accessToken);
       const candidates = this.buildCommentSourceCandidates(mediaId, context?.rawMedia, context?.batchPostId);
-      const candidateResults = [];
+      const candidateResults: CommentFetchResult[] = [];
 
       appendSyncTrace('meta:comment_fetch_context', {
         itemId: context?.itemId ?? null,
@@ -169,7 +190,7 @@ export class MetaService {
       });
 
       for (const candidate of candidates) {
-        const result = await this.fetchCommentsForCandidate(candidate, accessToken);
+        const result = await this.fetchCommentsForCandidate(candidate, accessToken, context?.pageId ?? null);
         candidateResults.push(result);
       }
 
@@ -208,15 +229,20 @@ export class MetaService {
         return [];
       }
 
-      const comments = selectedResult.comments;
+      const comments = this.enrichCommentsWithAuthorIdentity(
+        selectedResult.comments,
+        candidateResults.filter((result) => result.candidate.objectId !== selectedResult.candidate.objectId),
+      );
+      const commentsWithoutFrom = comments.filter((comment) => !comment.from).length;
+      const commentsWithoutAuthorName = comments.filter((comment) => !comment.from?.name?.trim()).length;
       appendFileSync(
         logPath,
         `[MetaService] Using ${selectedResult.candidate.sourceKind} ${selectedResult.candidate.objectId} for item ${context?.itemId ?? 'unknown'}; fetched ${comments.length} comments.\n`,
       );
 
-      if (selectedResult.commentsWithoutFrom > 0 || selectedResult.commentsWithoutAuthorName > 0) {
+      if (commentsWithoutFrom > 0 || commentsWithoutAuthorName > 0) {
         appendSyncDiagnostic(
-          `[DATA_ISSUE] Item ${context?.itemId ?? 'unknown'}: Meta omitted comment author identity on source ${selectedResult.candidate.objectId}. Missing from=${selectedResult.commentsWithoutFrom}, missing from.name=${selectedResult.commentsWithoutAuthorName}.\n`,
+          `[DATA_ISSUE] Item ${context?.itemId ?? 'unknown'}: Meta omitted comment author identity on source ${selectedResult.candidate.objectId}. Missing from=${commentsWithoutFrom}, missing from.name=${commentsWithoutAuthorName}.\n`,
         );
       }
 
@@ -225,7 +251,8 @@ export class MetaService {
       }
       return comments;
     } catch (error) {
-      appendFileSync(logPath, `[MetaService] Error fetching comments for ${mediaId}: ${this.getErrorMessage(error)}\n`);
+      const stack = error instanceof Error ? error.stack ?? '' : '';
+      appendFileSync(logPath, `[MetaService] Error fetching comments for ${mediaId}: ${this.getErrorMessage(error)}\n${stack}\n`);
       console.error('Error fetching comments:', error);
       return [];
     }
@@ -267,14 +294,18 @@ export class MetaService {
     return candidates;
   }
 
-  private async fetchCommentsForCandidate(candidate: CommentSourceCandidate, accessToken: string) {
+  private async fetchCommentsForCandidate(
+    candidate: CommentSourceCandidate,
+    accessToken: string,
+    pageId: string | null,
+  ) {
     const endpoint =
       `${this.baseUrl}/${candidate.objectId}/comments?fields=${encodeURIComponent(COMMENT_FIELDS)}&order=chronological&access_token=${encodeURIComponent(accessToken)}`;
 
     try {
       const response = await fetch(endpoint);
-      const payload = await response.json() as GraphResponse<MetaComment>;
-      const comments = payload.data || [];
+      const payload = await response.json() as GraphResponse<MetaCommentPayload>;
+      const comments = this.flattenComments(this.normalizeCommentPayloadArray(payload.data), pageId);
 
       return {
         candidate,
@@ -298,6 +329,127 @@ export class MetaService {
         error: this.getErrorMessage(error),
       };
     }
+  }
+
+  private flattenComments(comments: MetaCommentPayload[], pageId: string | null) {
+    const flattened: MetaComment[] = [];
+
+    this.normalizeCommentPayloadArray(comments).forEach((comment) => {
+      const safeMessage = typeof comment.message === 'string' ? comment.message : '';
+      flattened.push({
+        id: comment.id,
+        from: comment.from,
+        message: safeMessage,
+        created_time: comment.created_time,
+        parentCommentId: comment.parent?.id ?? null,
+        isReply: false,
+        isPageAuthor: this.isPageAuthoredComment(comment, pageId),
+        raw: comment,
+      });
+
+      this.normalizeCommentPayloadArray(comment.comments?.data).forEach((reply) => {
+        const safeReplyMessage = typeof reply.message === 'string' ? reply.message : '';
+        flattened.push({
+          id: reply.id,
+          from: reply.from,
+          message: safeReplyMessage,
+          created_time: reply.created_time,
+          parentCommentId: reply.parent?.id ?? comment.id,
+          isReply: true,
+          isPageAuthor: this.isPageAuthoredComment(reply, pageId),
+          raw: reply,
+        });
+      });
+    });
+
+    return flattened;
+  }
+
+  private isPageAuthoredComment(comment: { from?: { id?: string } }, pageId: string | null) {
+    return Boolean(pageId && comment.from?.id && comment.from.id === pageId);
+  }
+
+  private enrichCommentsWithAuthorIdentity(
+    comments: MetaComment[],
+    alternateResults: CommentFetchResult[],
+  ) {
+    const commentById = new Map<string, MetaComment>();
+    const commentByFingerprint = new Map<string, MetaComment>();
+    const selectedCommentIds = new Set(comments.map((comment) => comment.id));
+    const selectedParentIds = new Set(
+      comments.filter((comment) => !comment.parentCommentId).map((comment) => comment.id),
+    );
+    const mergedComments = new Map<string, MetaComment>(comments.map((comment) => [comment.id, comment]));
+
+    alternateResults.forEach((result) => {
+      result.comments.forEach((comment) => {
+        if (!this.hasUsableAuthorIdentity(comment)) {
+          if (comment.isReply && comment.parentCommentId && selectedParentIds.has(comment.parentCommentId)) {
+            mergedComments.set(comment.id, comment);
+          }
+        } else {
+          commentById.set(comment.id, comment);
+          commentByFingerprint.set(this.getCommentFingerprint(comment), comment);
+
+          if (comment.isReply && comment.parentCommentId && selectedParentIds.has(comment.parentCommentId)) {
+            mergedComments.set(comment.id, comment);
+          } else if (selectedCommentIds.has(comment.id)) {
+            mergedComments.set(comment.id, {
+              ...(mergedComments.get(comment.id) ?? comment),
+              ...comment,
+            });
+          }
+        }
+      });
+    });
+
+    return [...mergedComments.values()].map((comment) => {
+      if (this.hasUsableAuthorIdentity(comment)) {
+        return comment;
+      }
+
+      const matchedComment =
+        commentById.get(comment.id)
+        ?? commentByFingerprint.get(this.getCommentFingerprint(comment));
+
+      if (!matchedComment?.from) {
+        return comment;
+      }
+
+      return {
+        ...comment,
+        from: {
+          id: matchedComment.from.id,
+          name: matchedComment.from.name,
+        },
+      };
+    });
+  }
+
+  private getCommentFingerprint(comment: MetaComment) {
+    const safeMessage = typeof comment.message === 'string' ? comment.message : '';
+    return `${comment.created_time}::${safeMessage.trim().toLowerCase()}`;
+  }
+
+  private hasUsableAuthorIdentity(comment: MetaComment) {
+    return Boolean(comment.from?.id?.trim() || comment.from?.name?.trim());
+  }
+
+  private normalizeCommentPayloadArray(
+    payload: Array<MetaCommentPayload | null> | MetaCommentPayload[] | null | undefined,
+  ): MetaCommentPayload[] {
+    if (!Array.isArray(payload)) {
+      return [];
+    }
+
+    const normalized: MetaCommentPayload[] = [];
+    for (const entry of payload) {
+      if (entry && typeof entry.id === 'string' && entry.id.trim().length > 0) {
+        normalized.push(entry);
+      }
+    }
+
+    return normalized;
   }
 
   private getCandidatePriority(sourceKind: CommentSourceKind) {

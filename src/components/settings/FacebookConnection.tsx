@@ -64,7 +64,7 @@ export function FacebookConnection({ initialPage, onConnect, onDisconnect }: Fac
                   <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-black uppercase rounded-full">Active</span>
                 </div>
                 <p className="text-xs text-slate-500 font-medium">Page ID: {initialPage.id}</p>
-                <p className="text-[10px] text-slate-400 mt-1 italic italic">Connected via POC token</p>
+                <p className="text-[10px] text-slate-400 mt-1 italic italic">Connected with user token, syncing with stored page token.</p>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -97,15 +97,15 @@ export function FacebookConnection({ initialPage, onConnect, onDisconnect }: Fac
                 No Page Connected
               </p>
               <p className="text-xs text-amber-600 mt-1">
-                Enter a Meta Page Access Token below to enable real-world syncing for this POC.
+                Enter a Meta User Access Token below. MineTally will derive and store the Page Access Token automatically.
               </p>
             </div>
             <div className="flex flex-col space-y-2">
-              <label className="text-xs font-black uppercase tracking-widest text-slate-400">Page Access Token</label>
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400">User Access Token</label>
               <div className="flex space-x-2">
                 <input 
                   type="password"
-                  placeholder="Paste your page access token..."
+                  placeholder="Paste your user access token..."
                   className="flex-1 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                   value={debugToken}
                   onChange={(e) => setDebugToken(e.target.value)}
@@ -120,7 +120,7 @@ export function FacebookConnection({ initialPage, onConnect, onDisconnect }: Fac
               </div>
               {error && <p className="text-xs text-red-500 font-bold mt-1 inline-flex items-center"><XCircle className="h-3 w-3 mr-1" /> {error}</p>}
               <p className="text-[10px] text-slate-400 italic">
-                * Note: Use a Page Access Token with `pages_read_engagement`, `pages_show_list`, and `pages_read_user_content` permissions.
+                * Note: Use a User Access Token that can return a Page token via `/me/accounts` with `pages_read_engagement`, `pages_show_list`, and `pages_read_user_content`.
               </p>
             </div>
           </div>

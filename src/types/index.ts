@@ -3,6 +3,12 @@ export interface MetaPage {
   name: string;
   access_token: string;
   tasks?: string[];
+  user_access_token?: string;
+  token_status?: string;
+  connection_status?: string;
+  token_last_validated_at?: string;
+  token_type_used_for_sync?: string;
+  last_sync_error?: string | null;
 }
 
 export interface MetaPost {
@@ -28,6 +34,10 @@ export interface MetaComment {
   };
   message: string;
   created_time: string;
+  parentCommentId?: string | null;
+  isReply?: boolean;
+  isPageAuthor?: boolean;
+  raw?: unknown;
 }
 
 export type ClaimWord = "mine" | "grab" | "steal" | "m" | "g" | "s";

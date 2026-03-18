@@ -12,6 +12,15 @@ import { MetaPageService } from "@/services/meta/meta-graph.service";
 import { MetaSyncService } from "@/services/meta/meta-sync.service";
 import { BuyerTotalRepository } from '@/repositories/buyer-total.repository';
 import { ClaimWord, ItemStatus, SellerSettings } from '@/types';
+import { inspectMetaAccessToken } from '@/services/meta/meta-token-diagnostics';
+
+const REQUIRED_PAGE_SCOPES = [
+  'pages_show_list',
+  'pages_read_engagement',
+  'pages_read_user_content',
+];
+
+const PREFERRED_PAGE_TASKS = ['MODERATE', 'MANAGE'];
 
 /**
  * Creates a new collection in Supabase.
@@ -204,23 +213,65 @@ export async function updateSettingsAction(newSettings: SellerSettings) {
  * Connects a Facebook Page.
  */
 export async function connectFacebookPageAction(token: string) {
-  const managedPages = await MetaPageService.getManagedPages(token);
-  if (managedPages.length === 0) {
-    throw new Error("No Facebook Pages found for this token.");
+  const trimmedToken = token.trim();
+  if (!trimmedToken) {
+    throw new Error('Invalid user token.');
   }
 
-  const page = managedPages[0]; 
-  const success = await FacebookPageRepository.upsertPage(page);
+  const tokenInspection = await inspectMetaAccessToken(trimmedToken);
+  const tokenScopes = tokenInspection?.scopes ?? [];
+  const missingScopes = REQUIRED_PAGE_SCOPES.filter((scope) => !tokenScopes.includes(scope));
+
+  if (missingScopes.length > 0) {
+    throw new Error(`User token is missing required permissions: ${missingScopes.join(', ')}.`);
+  }
+
+  const managedPages = await MetaPageService.getManagedPages(trimmedToken);
+  if (managedPages.length === 0) {
+    throw new Error("Invalid user token or no Facebook Pages found via /me/accounts.");
+  }
+
+  const page =
+    managedPages.find((candidate) => {
+      const tasks = candidate.tasks ?? [];
+      return tasks.length === 0 || PREFERRED_PAGE_TASKS.some((task) => tasks.includes(task));
+    }) ?? managedPages[0];
+
+  if (!page.access_token?.trim()) {
+    throw new Error('Failed to derive page token from /me/accounts.');
+  }
+
+  if ((page.tasks ?? []).length > 0 && !PREFERRED_PAGE_TASKS.some((task) => (page.tasks ?? []).includes(task))) {
+    throw new Error('Selected Facebook Page is missing the required Page tasks.');
+  }
+
+  const success = await FacebookPageRepository.upsertPage({
+    ...page,
+    userAccessToken: trimmedToken,
+    tokenStatus: 'valid',
+    connectionStatus: 'active',
+    lastSyncError: null,
+  });
 
   if (!success) throw new Error("Failed to save Facebook Page connection.");
 
   await AuditLogRepository.log({
     action: 'facebook_connected',
     details: {
+      tokenTypeReceivedFromForm: tokenInspection?.type ?? 'unknown',
+      pagesReturnedByAccounts: managedPages.map((candidate) => ({
+        pageId: candidate.id,
+        pageName: candidate.name,
+        tasks: candidate.tasks ?? [],
+        hasPageAccessToken: Boolean(candidate.access_token?.trim()),
+      })),
       pageName: page.name,
       pageId: page.id,
       pageTasks: page.tasks ?? [],
-      tokenSource: 'me/accounts page access token',
+      storedPageAccessToken: true,
+      tokenSource: 'user token via /me/accounts',
+      tokenTypeUsedForSync: 'page_access_token',
+      missingScopes,
     }
   });
 

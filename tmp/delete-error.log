@@ -72,3 +72,7 @@ TypeError: __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$repositories$2
 [DEBUG] collectionService.deleteCollection result: true
 [2026-03-16T05:07:46.586Z] [deleteCollectionAction] START: 0fa82d7a-c3e3-4589-b16d-89611fffeb5c
 [DEBUG] collectionService.deleteCollection result: true
+[2026-03-18T13:30:38.105Z] [deleteCollectionAction] START: b520f691-8b37-4885-91fe-d8daf0567164
+[DEBUG] collectionService.deleteCollection result: true
+[2026-03-18T13:39:00.004Z] [deleteCollectionAction] START: 2d1a5243-b705-441d-a0a8-7058c8f1db48
+[DEBUG] collectionService.deleteCollection result: true

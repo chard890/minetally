@@ -34,6 +34,9 @@ export interface WinnerAggregationRow {
   collectionStatus: string;
   commentBuyerName: string | null;
   commentBuyerId: string | null;
+  pricingSource: string | null;
+  needsReview: boolean;
+  reviewReason: string | null;
   dataIssue: string | null;
   pricingIssue: string | null;
 }
@@ -296,6 +299,9 @@ export class WinnerRepository {
         collectionStatus: winner.item.batchPost.collection.status ?? "open",
         commentBuyerName,
         commentBuyerId,
+        pricingSource: winner.pricingSource,
+        needsReview: !!winner.needsReview,
+        reviewReason: winner.reviewReason ?? null,
         dataIssue,
         pricingIssue,
       };

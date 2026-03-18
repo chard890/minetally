@@ -70,6 +70,60 @@ class PriceService {
     );
   }
 
+  public extractFlatPrice(rawPriceText: string): number | null {
+    const genericAmounts = this.extractGenericAmounts(rawPriceText.toUpperCase().trim());
+    return genericAmounts.length === 1 ? genericAmounts[0] : null;
+  }
+
+  public resolveConfirmedWinnerPrice(params: {
+    pictureLevelText: string | null | undefined;
+    postLevelText: string | null | undefined;
+    claimWord: ClaimWord | null | undefined;
+    claimCodeMapping: ClaimCodeMapping;
+  }) {
+    const pictureLevelPrice = this.extractFlatPrice(params.pictureLevelText ?? "");
+    if (pictureLevelPrice !== null) {
+      return {
+        resolvedPrice: pictureLevelPrice,
+        pricingSource: "picture_level" as const,
+      };
+    }
+
+    const postLevelPrice = this.extractFlatPrice(params.postLevelText ?? "");
+    if (postLevelPrice !== null) {
+      return {
+        resolvedPrice: postLevelPrice,
+        pricingSource: "post_flat" as const,
+      };
+    }
+
+    const claimWord =
+      params.claimWord && ["mine", "grab", "steal"].includes(params.claimWord)
+        ? params.claimWord
+        : null;
+    const claimWordPrice = claimWord
+      ? this.resolvePrice(
+          this.parseRawPriceText(
+            `${params.pictureLevelText ?? ""}\n${params.postLevelText ?? ""}`,
+            params.claimCodeMapping,
+          ),
+          claimWord,
+        )
+      : null;
+
+    if (claimWordPrice !== null) {
+      return {
+        resolvedPrice: claimWordPrice,
+        pricingSource: "claim_word" as const,
+      };
+    }
+
+    return {
+      resolvedPrice: null,
+      pricingSource: "unresolved" as const,
+    };
+  }
+
   private extractGenericAmounts(normalizedText: string) {
     const amounts = new Set<number>();
     const lines = normalizedText
