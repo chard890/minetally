@@ -24,7 +24,7 @@ function getAppAccessToken() {
   return `${appId}|${appSecret}`;
 }
 
-function maskToken(token: string) {
+export function maskToken(token: string) {
   if (token.length <= 10) {
     return `${token.slice(0, 2)}...${token.slice(-2)}`;
   }
@@ -33,10 +33,6 @@ function maskToken(token: string) {
 }
 
 export async function inspectMetaAccessToken(accessToken: string) {
-  if (process.env.NODE_ENV === 'production') {
-    return null;
-  }
-
   const appAccessToken = getAppAccessToken();
   if (!appAccessToken) {
     appendSyncDiagnostic('[META_DEBUG] Skipping token inspection because FACEBOOK_APP_ID / FACEBOOK_APP_SECRET are not configured.\n');

@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { MetaPage, MetaPost, MetaMedia, MetaComment } from '../types';
 import { appendSyncDiagnostic, appendSyncTrace } from '@/lib/sync-diagnostics';
-import { inspectMetaAccessToken } from '@/services/meta/meta-token-diagnostics';
+import { inspectMetaAccessToken, maskToken } from '@/services/meta/meta-token-diagnostics';
 
 type GraphResponse<T> = {
   data?: T[];
@@ -65,6 +65,15 @@ type MetaCommentPayload = MetaComment & {
 };
 
 const COMMENT_FIELDS = 'id,message,created_time,from{id,name},parent{id,message},comments.limit(100){id,message,created_time,from{id,name},parent{id,message}}';
+
+function sanitizeGraphEndpoint(endpoint: string) {
+  const url = new URL(endpoint);
+  const accessToken = url.searchParams.get('access_token');
+  if (accessToken) {
+    url.searchParams.set('access_token', maskToken(accessToken));
+  }
+  return url.toString();
+}
 
 export class MetaService {
   private baseUrl = 'https://graph.facebook.com/v19.0';
@@ -309,7 +318,7 @@ export class MetaService {
 
       return {
         candidate,
-        endpoint,
+        endpoint: sanitizeGraphEndpoint(endpoint),
         comments,
         commentsWithAuthorName: comments.filter((comment) => Boolean(comment.from?.name?.trim())).length,
         commentsWithoutFrom: comments.filter((comment) => !comment.from).length,
@@ -320,7 +329,7 @@ export class MetaService {
     } catch (error) {
       return {
         candidate,
-        endpoint,
+        endpoint: sanitizeGraphEndpoint(endpoint),
         comments: [],
         commentsWithAuthorName: 0,
         commentsWithoutFrom: 0,

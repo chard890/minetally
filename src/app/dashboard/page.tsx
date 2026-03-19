@@ -79,11 +79,13 @@ export default async function DashboardPage() {
   const topBuyers = buyerTotals.slice(0, 5);
   const totalBuyerClaimValue = buyerTotals.reduce((sum, buyer) => sum + buyer.totalAmount, 0);
   const totalBuyerClaimedItems = buyerTotals.reduce((sum, buyer) => sum + buyer.totalWonItems, 0);
-  const manualFixes = activeCollection.batches
-    .flatMap((batch) => batch.items)
-    .filter((item) => item.hasManualOverride).length;
-  const pendingIssues = activeCollection.batches.filter((batch) => batch.syncStatus === "attention").length;
-  const liveStatusRows = activeCollection.batches.slice(0, 5);
+  const manualFixes = activeCollection
+    ? activeCollection.batches.flatMap((batch) => batch.items).filter((item) => item.hasManualOverride).length
+    : 0;
+  const pendingIssues = activeCollection
+    ? activeCollection.batches.filter((batch) => batch.syncStatus === "attention").length
+    : 0;
+  const liveStatusRows = activeCollection ? activeCollection.batches.slice(0, 5) : [];
 
   if (!activeCollection) {
     return (

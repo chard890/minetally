@@ -21,6 +21,7 @@ model FacebookPage {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   metaPageId     String       @unique @map("meta_page_id")
   pageName       String       @map("page_name")
+  facebookUserId String?      @map("facebook_user_id")
   userAccessToken String?     @map("user_access_token")
   accessToken    String?      @map("page_access_token")
   pageTasksJson  Json?        @default("[]") @map("page_tasks_json")
@@ -29,6 +30,7 @@ model FacebookPage {
   tokenStatus    String?      @default("valid") @map("token_status")
   connectionStatus String?    @default("active") @map("connection_status")
   lastSyncError  String?      @map("last_sync_error")
+  reconnectRequired Boolean?  @default(false) @map("reconnect_required")
   tokenExpiresAt DateTime?    @map("token_expires_at") @db.Timestamptz(6)
   connectedAt    DateTime?    @default(now()) @map("connected_at") @db.Timestamptz(6)
   created_at     DateTime?    @default(now()) @db.Timestamptz(6)
@@ -36,6 +38,19 @@ model FacebookPage {
   collections    Collection[]
 
   @@map("facebook_pages")
+}
+
+model FacebookConnectionSession {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facebookUserId     String?  @map("facebook_user_id")
+  userAccessToken    String   @map("user_access_token")
+  pagesJson          Json     @default("[]") @map("pages_json")
+  grantedScopesJson  Json     @default("[]") @map("granted_scopes_json")
+  requiredScopesJson Json     @default("[]") @map("required_scopes_json")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt          DateTime @default(dbgenerated("(now() + '00:15:00'::interval)")) @map("expires_at") @db.Timestamptz(6)
+
+  @@map("facebook_connection_sessions")
 }
 
 model Collection {

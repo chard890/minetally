@@ -1,10 +1,29 @@
 import { SettingsForm } from "@/components/settings/SettingsForm";
+import { isFacebookAuthConfigured } from "@/lib/facebook-auth";
+import { FacebookConnectionSessionRepository } from "@/repositories/facebook-connection-session.repository";
 import { settingsService } from "@/services/settings.service";
 import { FacebookPageRepository } from "@/repositories/facebook-page.repository";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
   const settings = await settingsService.getSettings();
   const connectedPage = await FacebookPageRepository.getConnectedPage();
+  const facebookSessionId = typeof resolvedSearchParams.facebook_session === 'string'
+    ? resolvedSearchParams.facebook_session
+    : undefined;
+  const pendingConnection = facebookSessionId
+    ? await FacebookConnectionSessionRepository.getSession(facebookSessionId)
+    : null;
+  const facebookError = typeof resolvedSearchParams.facebook_error === 'string'
+    ? resolvedSearchParams.facebook_error
+    : null;
+  const facebookStatus = typeof resolvedSearchParams.facebook_status === 'string'
+    ? resolvedSearchParams.facebook_status
+    : null;
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12">
@@ -19,6 +38,10 @@ export default async function SettingsPage() {
       <SettingsForm 
         initialSettings={settings} 
         initialConnectedPage={connectedPage} 
+        pendingFacebookConnection={pendingConnection}
+        facebookAuthConfigured={isFacebookAuthConfigured()}
+        facebookError={facebookError}
+        facebookStatus={facebookStatus}
       />
     </div>
   );
