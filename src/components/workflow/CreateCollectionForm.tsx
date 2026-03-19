@@ -1,6 +1,6 @@
 'use client';
 
-import { Calendar, Facebook } from "lucide-react";
+import { Calendar, Facebook, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useState, useTransition } from "react";
 import { createCollectionAction } from "@/actions/workflow";
@@ -107,8 +107,13 @@ export function CreateCollectionForm({ pages }: CreateCollectionFormProps) {
         </div>
 
         {syncStatus && (
-          <div className="flex items-center rounded-[18px] border border-[#dccdfb] bg-[#f3edff] p-4 animate-pulse">
-            <div className="mr-3 h-2 w-2 rounded-full bg-[#7a62b7]"></div>
+          <div
+            className="flex items-center rounded-[18px] border border-[#dccdfb] bg-[#f3edff] p-4"
+            aria-live="polite"
+          >
+            <div className="mr-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-[#7a62b7] shadow-[0_8px_20px_rgba(122,98,183,0.12)]">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            </div>
             <p className="text-sm font-bold text-[#7a62b7]">{syncStatus}</p>
           </div>
         )}
@@ -119,7 +124,12 @@ export function CreateCollectionForm({ pages }: CreateCollectionFormProps) {
             className="h-14 w-full text-lg font-black"
             disabled={isPending}
           >
-            {isPending ? (syncStatus || 'Processing...') : 'Create Collection and Start Import'}
+            {isPending ? (
+              <>
+                <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                {syncStatus || 'Processing...'}
+              </>
+            ) : 'Create Collection and Start Import'}
           </Button>
         </div>
       </form>
