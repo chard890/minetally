@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react';
 import { syncAllCollectionBatchCommentsAction } from '@/actions/collection.actions';
 import { Button } from '@/components/ui/Button';
 import { Toast, ToastType } from '@/components/ui/Toast';
+import { ActionLoadingOverlay } from '@/components/ui/ActionLoadingOverlay';
 
 interface SyncAllBatchCommentsButtonProps {
   collectionId: string;
@@ -48,9 +49,15 @@ export function SyncAllBatchCommentsButton({ collectionId }: SyncAllBatchComment
 
   return (
     <>
+      <ActionLoadingOverlay
+        visible={isPending}
+        title="Syncing batch comments"
+        description="MineTally is scanning every batch in this collection, resolving confirmed buyers, and updating the latest totals."
+      />
+
       <Button
         variant="outline"
-        className="rounded-xl font-bold border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+        className="text-[#4f4a57]"
         disabled={isPending}
         onClick={handleSync}
       >

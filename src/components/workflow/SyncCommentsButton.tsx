@@ -44,7 +44,7 @@ export function SyncCommentsButton({ collectionId, batchId }: SyncCommentsButton
   return (
     <>
       <Button 
-        className="rounded-xl bg-indigo-600 font-bold hover:bg-indigo-700 text-white disabled:opacity-70"
+        className="disabled:opacity-70"
         disabled={isPending}
         onClick={handleSync}
       >

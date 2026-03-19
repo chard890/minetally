@@ -39,7 +39,7 @@ export function SyncCollectionButton({ collectionId }: SyncCollectionButtonProps
       <Button 
         variant="outline"
         size="sm"
-        className="rounded-xl font-bold border-slate-200 bg-white hover:bg-slate-50 text-indigo-600"
+        className="text-[#7a62b7]"
         disabled={isPending}
         onClick={handleSync}
       >

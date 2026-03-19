@@ -19,7 +19,6 @@ import { formatCurrency, formatDateRange, formatShortDate } from "@/lib/format";
 import { collectionService } from "@/services/collection.service";
 import { SyncCollectionButton } from "@/components/workflow/SyncCollectionButton";
 import { SyncAllBatchCommentsButton } from "@/components/workflow/SyncAllBatchCommentsButton";
-import { SyncDiagnostics } from "@/components/workflow/SyncDiagnostics";
 
 function getSyncBadge(syncStatus: string) {
   switch (syncStatus) {
@@ -45,6 +44,42 @@ export default async function CollectionDetailsPage({
   if (!collection) {
     notFound();
   }
+
+  const allItems = collection.batches.flatMap((batch) => batch.items);
+  const totalBatchPosts = collection.batches.length;
+  const totalItemPhotos = allItems.length;
+  const totalComments = allItems.reduce((sum, item) => sum + item.commentCount, 0);
+  const totalClaimedItems = allItems.filter((item) =>
+    item.status === "claimed" || item.status === "manual_override" || item.status === "locked",
+  ).length;
+  const totalNeedsReview = allItems.filter((item) => item.status === "needs_review").length;
+  const totalManualOverrides = allItems.filter((item) => item.hasManualOverride).length;
+  const totalCancelItems = allItems.filter((item) => item.cancelCount > 0).length;
+  const totalCollectionValue = allItems.reduce((sum, item) => {
+    if (
+      item.resolvedPrice === null ||
+      !["claimed", "manual_override", "locked"].includes(item.status)
+    ) {
+      return sum;
+    }
+
+    return sum + item.resolvedPrice;
+  }, 0);
+  const batchSummaries = collection.batches.map((batch) => {
+    const claimedItems = batch.items.filter((item) =>
+      item.status === "claimed" || item.status === "manual_override" || item.status === "locked",
+    ).length;
+    const needsReviewCount = batch.items.filter((item) => item.status === "needs_review").length;
+    const itemPhotos = batch.items.length;
+
+    return {
+      ...batch,
+      itemPhotos,
+      claimedItems,
+      needsReviewCount,
+      unclaimedItems: Math.max(itemPhotos - claimedItems - needsReviewCount, 0),
+    };
+  });
 
   return (
     <div className="space-y-8">
@@ -97,119 +132,49 @@ export default async function CollectionDetailsPage({
         </div>
       </div>
 
-      <SyncDiagnostics 
-        totalPosts={collection.totalBatchPosts}
-        totalItems={collection.totalItemPhotos}
-        totalNeedsReview={collection.needsReviewCount}
-        lastSyncedAt={collection.last_synced_at}
-        syncStatus={collection.sync_error ? 'error' : (collection.last_synced_at ? 'synced' : 'not_synced')}
-        error={collection.sync_error}
-      />
-
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard
           label="Batch Posts"
-          value={collection.totalBatchPosts}
+          value={totalBatchPosts}
           icon={Layers}
           colorClass="text-indigo-600"
           backgroundClass="bg-indigo-50"
         />
         <MetricCard
           label="Item Photos"
-          value={collection.totalItemPhotos}
+          value={totalItemPhotos}
           icon={Database}
           colorClass="text-blue-600"
           backgroundClass="bg-blue-50"
         />
         <MetricCard
           label="Claimed Items"
-          value={collection.totalClaimedItems}
+          value={totalClaimedItems}
           icon={CheckCircle2}
           colorClass="text-emerald-600"
           backgroundClass="bg-emerald-50"
         />
         <MetricCard
           label="Unclaimed Items"
-          value={collection.totalItemPhotos - collection.totalClaimedItems}
+          value={Math.max(totalItemPhotos - totalClaimedItems - totalNeedsReview, 0)}
           icon={Clock}
           colorClass="text-slate-400"
           backgroundClass="bg-slate-50"
         />
         <MetricCard
           label="Needs Review"
-          value={collection.needsReviewCount}
+          value={totalNeedsReview}
           icon={AlertTriangle}
           colorClass="text-amber-600"
           backgroundClass="bg-amber-50"
         />
         <MetricCard
           label="Collection Value"
-          value={formatCurrency(collection.totalCollectionValue)}
+          value={formatCurrency(totalCollectionValue)}
           icon={Lock}
           colorClass="text-slate-700"
           backgroundClass="bg-slate-100"
         />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-4">
-        <Card className="border-0 shadow-sm ring-1 ring-slate-100 lg:col-span-3">
-          <CardContent className="grid gap-4 pt-6 md:grid-cols-5">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Start Date
-              </p>
-              <p className="mt-1 text-sm font-bold text-slate-900">
-                {formatShortDate(collection.startDate)}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                End Date
-              </p>
-              <p className="mt-1 text-sm font-bold text-slate-900">
-                {formatShortDate(collection.endDate)}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Finalize Date
-              </p>
-              <p className="mt-1 text-sm font-bold text-slate-900">
-                {collection.finalizeDate ? formatShortDate(collection.finalizeDate) : "Not finalized"}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Manual Overrides
-              </p>
-              <p className="mt-1 text-sm font-bold text-slate-900">
-                {collection.manualOverridesCount}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Cancel Items
-              </p>
-              <p className="mt-1 text-sm font-bold text-slate-900">
-                {collection.cancelItemsCount}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-          <CardContent className="pt-6">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Connected Facebook Page
-            </p>
-            <p className="mt-2 text-lg font-bold text-slate-900">
-              {collection.connectedFacebookPage}
-            </p>
-            <p className="mt-2 text-xs font-medium text-slate-500">
-              Thumbnails and photo IDs are stored per item to verify claims at photo level.
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="space-y-4">
@@ -221,7 +186,7 @@ export default async function CollectionDetailsPage({
         </div>
 
         <div className="grid gap-4">
-          {collection.batches.map((batch) => (
+          {batchSummaries.map((batch) => (
             <Card
               key={batch.id}
               className="overflow-hidden border-0 shadow-sm ring-1 ring-slate-100 transition-all duration-300 hover:shadow-md hover:ring-indigo-200"
@@ -235,7 +200,8 @@ export default async function CollectionDetailsPage({
                     <div>
                       <h3 className="font-bold text-slate-900">{batch.title}</h3>
                       <p className="mt-1 text-xs font-medium text-slate-500">
-                        Posted {formatShortDate(batch.postedAt)} | {batch.syncNote}
+                        Posted {formatShortDate(batch.postedAt)}
+                        {batch.syncNote ? ` | ${batch.syncNote}` : ""}
                       </p>
                     </div>
                   </div>
@@ -258,7 +224,7 @@ export default async function CollectionDetailsPage({
                         Unclaimed
                       </p>
                       <p className="text-sm font-black text-slate-400">
-                        {batch.itemPhotos - batch.claimedItems}
+                        {batch.unclaimedItems}
                       </p>
                     </div>
                     <div className="text-center">

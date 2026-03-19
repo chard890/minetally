@@ -19,20 +19,24 @@ export function MetricCard({
   helperText,
 }: MetricCardProps) {
   return (
-    <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+    <Card className="card-hover border-0">
+      <CardContent className="!p-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8b8594]">
               {label}
             </p>
-            <p className="mt-1 text-3xl font-black text-slate-900">{value}</p>
+            <div className="mt-1.5 flex items-center gap-2.5">
+              <p className="text-[30px] font-extrabold leading-none text-[#2b2b2b]">{value}</p>
+              <div className={`${backgroundClass} ${colorClass} flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] ring-1 ring-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]`}>
+                <Icon className="h-4.5 w-4.5" />
+              </div>
+            </div>
             {helperText ? (
-              <p className="mt-1 text-xs font-medium text-slate-400">{helperText}</p>
+              <p className="mt-2 truncate text-[11px] font-medium leading-[1.25] text-[#6b6b6b]">
+                {helperText}
+              </p>
             ) : null}
-          </div>
-          <div className={`${backgroundClass} ${colorClass} rounded-2xl p-3 ring-1 ring-black/5`}>
-            <Icon className="h-5 w-5" />
           </div>
         </div>
       </CardContent>

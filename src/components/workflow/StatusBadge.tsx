@@ -1,12 +1,12 @@
 import { cn } from "@/lib/utils";
 
 const VARIANT_STYLES = {
-  slate: "bg-slate-50 text-slate-600 ring-slate-200 border-slate-200",
-  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100 border-emerald-100",
-  amber: "bg-amber-50 text-amber-700 ring-amber-100 border-amber-100",
-  indigo: "bg-indigo-50 text-indigo-700 ring-indigo-100 border-indigo-100",
-  blue: "bg-blue-50 text-blue-700 ring-blue-100 border-blue-100",
-  rose: "bg-rose-50 text-rose-700 ring-rose-100 border-rose-100",
+  slate: "border-white/55 bg-white/58 text-[#66606f] ring-white/45",
+  emerald: "border-[#bfe6d4] bg-[#eef9f3] text-[#3c8265] ring-[#d8f1e4]",
+  amber: "border-[#ffd8bd] bg-[#fff1e6] text-[#b96d3d] ring-[#ffe8d8]",
+  indigo: "border-[#dccdfb] bg-[#f3edff] text-[#7a62b7] ring-[#ece2ff]",
+  blue: "border-[#d6e2ff] bg-[#edf3ff] text-[#5577b9] ring-[#e8efff]",
+  rose: "border-[#f6c8d8] bg-[#fff0f5] text-[#bd5b84] ring-[#ffe3ee]",
 } as const;
 
 type Variant = keyof typeof VARIANT_STYLES;
@@ -25,7 +25,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ring-1",
+        "inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ring-1",
         VARIANT_STYLES[variant],
         className,
       )}
