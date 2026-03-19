@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { getServiceSupabase } from '@/lib/supabase';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { MetaPage } from '@/types';
 
@@ -34,7 +34,7 @@ export class FacebookPageRepository {
   }
 
   static async getConnectedPage(): Promise<MetaPage | null> {
-    let { data, error } = await supabase
+    let { data, error } = await getServiceSupabase()
       .from('facebook_pages')
       .select('*')
       .eq('connection_status', 'active')
@@ -44,7 +44,7 @@ export class FacebookPageRepository {
       .maybeSingle();
 
     if (this.isMissingReconnectRequiredColumn(error)) {
-      ({ data, error } = await supabase
+      ({ data, error } = await getServiceSupabase()
         .from('facebook_pages')
         .select('*')
         .eq('connection_status', 'active')
@@ -78,7 +78,7 @@ export class FacebookPageRepository {
   }
 
   static async getPageById(id: string): Promise<MetaPage | null> {
-    const { data, error } = await supabase
+    const { data, error } = await getServiceSupabase()
       .from('facebook_pages')
       .select('*')
       .eq('id', id)
@@ -104,7 +104,7 @@ export class FacebookPageRepository {
   }
 
   static async listPages(): Promise<{ id: string, name: string }[]> {
-    let { data, error } = await supabase
+    let { data, error } = await getServiceSupabase()
       .from('facebook_pages')
       .select('id, page_name')
       .eq('connection_status', 'active')
@@ -112,7 +112,7 @@ export class FacebookPageRepository {
       .order('page_name');
 
     if (this.isMissingReconnectRequiredColumn(error)) {
-      ({ data, error } = await supabase
+      ({ data, error } = await getServiceSupabase()
         .from('facebook_pages')
         .select('id, page_name')
         .eq('connection_status', 'active')
@@ -131,7 +131,7 @@ export class FacebookPageRepository {
   }
 
   static async upsertPage(page: UpsertFacebookPageInput, expiresAt?: string): Promise<boolean> {
-    const { error } = await supabase
+    const { error } = await getServiceSupabase()
       .from('facebook_pages')
       .upsert({
         meta_page_id: page.id,
@@ -158,7 +158,7 @@ export class FacebookPageRepository {
   }
 
   static async disconnectPage(): Promise<boolean> {
-    const { error } = await supabase
+    const { error } = await getServiceSupabase()
       .from('facebook_pages')
       .delete()
       .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
@@ -176,7 +176,7 @@ export class FacebookPageRepository {
     connectionStatus: string;
     lastSyncError?: string | null;
   }): Promise<boolean> {
-    const { error } = await supabase
+    const { error } = await getServiceSupabase()
       .from('facebook_pages')
       .update({
         token_status: params.tokenStatus,
