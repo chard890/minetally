@@ -3,11 +3,14 @@ export interface MetaPage {
   name: string;
   access_token: string;
   tasks?: string[];
+  facebook_user_id?: string;
   user_access_token?: string;
   token_status?: string;
   connection_status?: string;
   token_last_validated_at?: string;
   token_type_used_for_sync?: string;
+  reconnect_required?: boolean;
+  token_expires_at?: string;
   last_sync_error?: string | null;
 }
 

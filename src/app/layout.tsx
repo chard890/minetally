@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import { settingsService } from "@/services/settings.service";
 import { FacebookPageRepository } from "@/repositories/facebook-page.repository";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,9 +18,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const settings = await settingsService.getSettings();
-  const connectedPage = await FacebookPageRepository.getConnectedPage();
-  const pageName = connectedPage?.name ?? settings.facebookIntegration.connectedPageName;
+  const settings = isSupabaseConfigured()
+    ? await settingsService.getSettings()
+    : null;
+  const connectedPage = isSupabaseConfigured()
+    ? await FacebookPageRepository.getConnectedPage()
+    : null;
 
   return (
     <html lang="en" className="h-full">
@@ -27,8 +31,8 @@ export default async function RootLayout({
         <div className="flex min-h-full">
           <Sidebar 
             connectedPageId={connectedPage?.id}
-            connectedPageName={pageName} 
-            isTokenExpired={settings.facebookIntegration.isTokenExpired} 
+            connectedPageName={connectedPage?.name} 
+            isTokenExpired={settings?.facebookIntegration.isTokenExpired} 
           />
           <main className="relative flex-1 overflow-y-auto pl-0 md:pl-2">
             <div className="relative z-10 mx-auto max-w-[1600px] px-5 py-5 sm:px-6 lg:px-8 lg:py-7">

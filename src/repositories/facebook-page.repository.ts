@@ -1,10 +1,12 @@
 import { supabase } from '@/lib/supabase';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { MetaPage } from '@/types';
 
 type FacebookPageRow = {
   id: string;
   meta_page_id: string;
   page_name: string;
+  facebook_user_id?: string | null;
   user_access_token?: string | null;
   page_access_token?: string | null;
   page_tasks_json?: string[] | null;
@@ -12,22 +14,44 @@ type FacebookPageRow = {
   token_last_validated_at?: string | null;
   token_status?: string | null;
   connection_status?: string | null;
+  reconnect_required?: boolean | null;
+  token_expires_at?: string | null;
   last_sync_error?: string | null;
 };
 
 type UpsertFacebookPageInput = MetaPage & {
   userAccessToken: string;
+  facebookUserId?: string | null;
   tokenStatus?: string;
   connectionStatus?: string;
+  reconnectRequired?: boolean;
   lastSyncError?: string | null;
 };
 
 export class FacebookPageRepository {
+  private static isMissingReconnectRequiredColumn(error: { code?: string; message?: string } | null) {
+    return error?.code === '42703' && error.message?.includes('reconnect_required');
+  }
+
   static async getConnectedPage(): Promise<MetaPage | null> {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('facebook_pages')
       .select('*')
+      .eq('connection_status', 'active')
+      .eq('reconnect_required', false)
+      .order('connected_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
+
+    if (this.isMissingReconnectRequiredColumn(error)) {
+      ({ data, error } = await supabase
+        .from('facebook_pages')
+        .select('*')
+        .eq('connection_status', 'active')
+        .order('connected_at', { ascending: false })
+        .limit(1)
+        .maybeSingle());
+    }
 
     if (error) {
       console.error('Error fetching connected page:', error);
@@ -39,13 +63,16 @@ export class FacebookPageRepository {
     return {
       id: data.meta_page_id,
       name: data.page_name,
-      access_token: data.page_access_token,
-      user_access_token: data.user_access_token ?? undefined,
+      access_token: decryptToken(data.page_access_token) ?? '',
+      facebook_user_id: data.facebook_user_id ?? undefined,
+      user_access_token: decryptToken(data.user_access_token) ?? undefined,
       tasks: data.page_tasks_json ?? undefined,
       token_status: data.token_status ?? undefined,
       connection_status: data.connection_status ?? undefined,
       token_last_validated_at: data.token_last_validated_at ?? undefined,
       token_type_used_for_sync: data.token_type_used_for_sync ?? undefined,
+      reconnect_required: Boolean(data.reconnect_required),
+      token_expires_at: data.token_expires_at ?? undefined,
       last_sync_error: data.last_sync_error ?? null,
     };
   }
@@ -62,22 +89,35 @@ export class FacebookPageRepository {
     return {
       id: data.meta_page_id,
       name: data.page_name,
-      access_token: data.page_access_token,
-      user_access_token: data.user_access_token ?? undefined,
+      access_token: decryptToken(data.page_access_token) ?? '',
+      facebook_user_id: data.facebook_user_id ?? undefined,
+      user_access_token: decryptToken(data.user_access_token) ?? undefined,
       tasks: data.page_tasks_json ?? undefined,
       token_status: data.token_status ?? undefined,
       connection_status: data.connection_status ?? undefined,
       token_last_validated_at: data.token_last_validated_at ?? undefined,
       token_type_used_for_sync: data.token_type_used_for_sync ?? undefined,
+      reconnect_required: Boolean(data.reconnect_required),
+      token_expires_at: data.token_expires_at ?? undefined,
       last_sync_error: data.last_sync_error ?? null,
     };
   }
 
   static async listPages(): Promise<{ id: string, name: string }[]> {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('facebook_pages')
       .select('id, page_name')
+      .eq('connection_status', 'active')
+      .eq('reconnect_required', false)
       .order('page_name');
+
+    if (this.isMissingReconnectRequiredColumn(error)) {
+      ({ data, error } = await supabase
+        .from('facebook_pages')
+        .select('id, page_name')
+        .eq('connection_status', 'active')
+        .order('page_name'));
+    }
 
     if (error) {
       console.error('Error listing Facebook pages:', error);
@@ -96,13 +136,15 @@ export class FacebookPageRepository {
       .upsert({
         meta_page_id: page.id,
         page_name: page.name,
-        user_access_token: page.userAccessToken,
-        page_access_token: page.access_token,
+        facebook_user_id: page.facebookUserId ?? page.facebook_user_id ?? null,
+        user_access_token: encryptToken(page.userAccessToken),
+        page_access_token: encryptToken(page.access_token),
         page_tasks_json: page.tasks ?? [],
         token_type_used_for_sync: 'page_access_token',
         token_last_validated_at: new Date().toISOString(),
         token_status: page.tokenStatus ?? 'valid',
         connection_status: page.connectionStatus ?? 'active',
+        reconnect_required: page.reconnectRequired ?? false,
         last_sync_error: page.lastSyncError ?? null,
         token_expires_at: expiresAt,
         connected_at: new Date().toISOString()
@@ -139,6 +181,7 @@ export class FacebookPageRepository {
       .update({
         token_status: params.tokenStatus,
         connection_status: params.connectionStatus,
+        reconnect_required: params.connectionStatus === 'needs_reconnect' || params.tokenStatus !== 'valid',
         last_sync_error: params.lastSyncError ?? null,
         token_last_validated_at: new Date().toISOString(),
       })

@@ -12,19 +12,34 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useState, useTransition } from 'react';
 import { 
-  updateSettingsAction, 
-  connectFacebookPageAction, 
-  disconnectFacebookPageAction 
+  updateSettingsAction,
 } from '@/actions/workflow';
-import { SellerSettings, MetaPage } from '@/types';
+import {
+  disconnectFacebookPageAction,
+  finalizeFacebookPageSelectionAction,
+  refreshFacebookConnectionAction,
+} from '@/actions/facebook.actions';
+import type { SellerSettings, MetaPage } from '@/types';
 import { FacebookConnection } from './FacebookConnection';
+import type { PendingFacebookConnectionSession } from '@/repositories/facebook-connection-session.repository';
 
 interface SettingsFormProps {
   initialSettings: SellerSettings;
   initialConnectedPage: MetaPage | null;
+  pendingFacebookConnection: PendingFacebookConnectionSession | null;
+  facebookAuthConfigured: boolean;
+  facebookError: string | null;
+  facebookStatus: string | null;
 }
 
-export function SettingsForm({ initialSettings, initialConnectedPage }: SettingsFormProps) {
+export function SettingsForm({
+  initialSettings,
+  initialConnectedPage,
+  pendingFacebookConnection,
+  facebookAuthConfigured,
+  facebookError,
+  facebookStatus,
+}: SettingsFormProps) {
   const [isPending, startTransition] = useTransition();
   const [settings, setSettings] = useState<SellerSettings>(initialSettings);
 
@@ -71,8 +86,15 @@ export function SettingsForm({ initialSettings, initialConnectedPage }: Settings
       {/* Facebook Integration (POC) */}
       <FacebookConnection 
         initialPage={initialConnectedPage} 
-        onConnect={async (token) => {
-          await connectFacebookPageAction(token);
+        pendingConnection={pendingFacebookConnection}
+        authConfigured={facebookAuthConfigured}
+        flashError={facebookError}
+        flashStatus={facebookStatus}
+        onSelectPage={async (sessionId, pageId) => {
+          return await finalizeFacebookPageSelectionAction(sessionId, pageId);
+        }}
+        onRefresh={async () => {
+          return await refreshFacebookConnectionAction();
         }}
         onDisconnect={async () => {
           await disconnectFacebookPageAction();
