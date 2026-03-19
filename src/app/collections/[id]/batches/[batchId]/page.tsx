@@ -15,7 +15,9 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
 import { SyncCommentsButton } from "@/components/workflow/SyncCommentsButton";
 import { BatchItemsList } from "@/components/workflow/BatchItemsList";
+import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { formatClaimWord, formatCurrency, formatShortDate } from "@/lib/format";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { collectionService } from "@/services/collection.service";
 
 function getItemStatusVariant(status: string) {
@@ -38,6 +40,10 @@ export default async function BatchDetailsPage({
 }: {
   params: Promise<{ id: string; batchId: string }>;
 }) {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const { id, batchId } = await params;
   console.log(`[BatchDetailsPage] ID: ${id}, BatchID: ${batchId}`);
   const collection = await collectionService.getCollection(id);

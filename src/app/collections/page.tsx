@@ -3,7 +3,9 @@ import { Calendar, ChevronRight, Facebook, Layers, Plus, Search, ShoppingBag } f
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
+import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { formatCurrency, formatDateRange, formatShortDate } from "@/lib/format";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { collectionService } from "@/services/collection.service";
 
@@ -23,6 +25,10 @@ function getCollectionBadge(status: string) {
 }
 
 export default async function CollectionsPage() {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const collections = await collectionService.getCollections();
   const collectionDetails = await Promise.all(
     collections.map(async (collection) => ({

@@ -15,7 +15,9 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { MetricCard } from "@/components/workflow/MetricCard";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
+import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { formatCurrency, formatDateRange, formatShortDate } from "@/lib/format";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { collectionService } from "@/services/collection.service";
 import { SyncCollectionButton } from "@/components/workflow/SyncCollectionButton";
 import { SyncAllBatchCommentsButton } from "@/components/workflow/SyncAllBatchCommentsButton";
@@ -38,6 +40,10 @@ export default async function CollectionDetailsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const { id } = await params;
   const collection = await collectionService.getCollection(id);
 

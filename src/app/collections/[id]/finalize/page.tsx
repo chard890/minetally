@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { MetricCard } from "@/components/workflow/MetricCard";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
+import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { formatCurrency } from "@/lib/format";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { collectionService } from "@/services/collection.service";
 import { FinalizeActions } from "@/components/workflow/FinalizeActions";
 
@@ -22,6 +24,10 @@ export default async function FinalizeCollectionPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const { id } = await params;
   const collection = await collectionService.getCollection(id);
   const summary = await collectionService.getFinalizeSnapshot(id);

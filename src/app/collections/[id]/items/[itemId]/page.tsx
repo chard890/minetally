@@ -9,7 +9,9 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
+import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { formatClaimWord, formatCurrency, formatTimeOnly } from "@/lib/format";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { collectionService } from "@/services/collection.service";
 import { priceService } from "@/services/price.service";
 import { ItemActionButtons, PriceOverrideAction } from "@/components/workflow/ItemActionButtons";
@@ -58,6 +60,10 @@ export default async function ItemReviewPage({
 }: {
   params: Promise<{ id: string; itemId: string }>;
 }) {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const { id, itemId } = await params;
   const item = await collectionService.getItem(id, itemId);
 

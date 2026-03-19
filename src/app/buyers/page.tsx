@@ -3,8 +3,10 @@ import { Download, ExternalLink, Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { BuyerSearchInput } from "@/components/buyers/BuyerSearchInput";
+import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
 import { formatClaimWord, formatCurrency, formatDateTime } from "@/lib/format";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { collectionService } from "@/services/collection.service";
 
 export default async function BuyersPage({
@@ -18,6 +20,10 @@ export default async function BuyersPage({
     sortOrder?: "asc" | "desc";
   }>;
 }) {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const resolvedSearchParams = await searchParams;
   const collections = await collectionService.getCollections();
   const selectedCollectionId =

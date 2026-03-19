@@ -1,5 +1,7 @@
 import { SettingsForm } from "@/components/settings/SettingsForm";
+import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { isFacebookAuthConfigured } from "@/lib/facebook-auth";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { FacebookConnectionSessionRepository } from "@/repositories/facebook-connection-session.repository";
 import { settingsService } from "@/services/settings.service";
 import { FacebookPageRepository } from "@/repositories/facebook-page.repository";
@@ -9,6 +11,10 @@ export default async function SettingsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const settings = await settingsService.getSettings();
   const connectedPage = await FacebookPageRepository.getConnectedPage();

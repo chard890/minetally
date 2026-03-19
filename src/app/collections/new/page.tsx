@@ -1,11 +1,17 @@
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { SupabaseConfigGuide } from '@/components/workflow/SupabaseConfigGuide';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import Link from 'next/link';
 import { CreateCollectionForm } from '@/components/workflow/CreateCollectionForm';
 import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
 
 export default async function NewCollectionPage() {
+  if (!isSupabaseConfigured()) {
+    return <SupabaseConfigGuide />;
+  }
+
   const pages = await FacebookPageRepository.listPages();
 
   return (
