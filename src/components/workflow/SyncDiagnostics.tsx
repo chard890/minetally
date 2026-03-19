@@ -27,7 +27,7 @@ export function SyncDiagnostics({
 }: SyncDiagnosticsProps) {
   return (
     <Card className="border-0 shadow-sm ring-1 ring-slate-100 overflow-hidden">
-      <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-4">
+      <CardHeader className="border-b border-slate-100 bg-slate-50/40 px-5 py-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Activity className="h-4 w-4 text-indigo-500" />
@@ -43,8 +43,8 @@ export function SyncDiagnostics({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <CardContent className="p-5 pt-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <DiagnosticStat label="Posts Sync" value={totalPosts} icon={Info} color="blue" />
           <DiagnosticStat label="Items Sync" value={totalItems} icon={CheckCircle2} color="green" />
           <DiagnosticStat label="Comments" value={totalComments} icon={Activity} color="blue" />
@@ -53,7 +53,7 @@ export function SyncDiagnostics({
         </div>
         
         {error && (
-          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-100 flex items-start space-x-2">
+          <div className="mt-3 flex items-start space-x-2 rounded-xl border border-red-100 bg-red-50 p-3">
             <AlertCircle className="h-4 w-4 text-red-500 mt-0.5" />
             <div className="flex-1">
               <p className="text-xs font-bold text-red-700">Recent Sync Error</p>
@@ -75,14 +75,14 @@ function DiagnosticStat({ label, value, icon: Icon, color }: { label: string, va
   };
 
   return (
-    <div className="p-3 rounded-2xl border border-slate-100 bg-slate-50/30">
-      <div className="flex items-center space-x-2 mb-1">
-        <div className={`p-1 rounded-md ${colors[color]}`}>
+    <div className="rounded-2xl border border-slate-100 bg-slate-50/30 px-3 py-2.5">
+      <div className="mb-1 flex items-center space-x-2">
+        <div className={`rounded-md p-1 ${colors[color]}`}>
           <Icon className="h-3 w-3" />
         </div>
-        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</span>
       </div>
-      <p className="text-xl font-black text-slate-900">{value}</p>
+      <p className="text-[18px] font-semibold leading-none text-slate-900">{value}</p>
     </div>
   );
 }

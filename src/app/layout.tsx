@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import { settingsService } from "@/services/settings.service";
+import { FacebookPageRepository } from "@/repositories/facebook-page.repository";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,19 +18,23 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const settings = await settingsService.getSettings();
-  const pageName = settings.facebookIntegration.connectedPageName;
+  const connectedPage = await FacebookPageRepository.getConnectedPage();
+  const pageName = connectedPage?.name ?? settings.facebookIntegration.connectedPageName;
 
   return (
-    <html lang="en" className="h-full bg-slate-50">
+    <html lang="en" className="h-full">
       <body className={`${inter.className} h-full`}>
-        <div className="flex h-full">
+        <div className="flex min-h-full">
           <Sidebar 
+            connectedPageId={connectedPage?.id}
             connectedPageName={pageName} 
             isTokenExpired={settings.facebookIntegration.isTokenExpired} 
           />
-          <main className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-7xl px-8 py-10">
+          <main className="relative flex-1 overflow-y-auto pl-0 md:pl-2">
+            <div className="relative z-10 mx-auto max-w-[1600px] px-5 py-5 sm:px-6 lg:px-8 lg:py-7">
+              <div className="soft-scrollbar min-h-[calc(100vh-2.75rem)] p-5 sm:p-6 lg:p-8">
               {children}
+              </div>
             </div>
           </main>
         </div>

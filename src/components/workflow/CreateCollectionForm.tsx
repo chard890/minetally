@@ -55,37 +55,37 @@ export function CreateCollectionForm({ pages }: CreateCollectionFormProps) {
     <>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
-          <label className="text-xs font-black uppercase tracking-widest text-slate-400">Collection Name</label>
+          <label className="text-xs font-black uppercase tracking-[0.22em] text-[#8b8594]">Collection Name</label>
           <input 
             name="name"
             type="text" 
             placeholder="e.g. March 15 to 16 Payday Drop" 
-            className="w-full h-12 px-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+            className="h-12 w-full px-4 font-medium"
             required
           />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-xs font-black uppercase tracking-widest text-slate-400">Start Date</label>
+            <label className="text-xs font-black uppercase tracking-[0.22em] text-[#8b8594]">Start Date</label>
             <div className="relative">
-              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8b8594]" />
               <input 
                 name="startDate"
                 type="date" 
-                className="w-full h-12 pl-12 pr-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                className="h-12 w-full pl-12 pr-4 font-medium"
                 required
               />
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-black uppercase tracking-widest text-slate-400">End Date</label>
+            <label className="text-xs font-black uppercase tracking-[0.22em] text-[#8b8594]">End Date</label>
             <div className="relative">
-              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8b8594]" />
               <input 
                 name="endDate"
                 type="date" 
-                className="w-full h-12 pl-12 pr-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                className="h-12 w-full pl-12 pr-4 font-medium"
                 required
               />
             </div>
@@ -93,30 +93,30 @@ export function CreateCollectionForm({ pages }: CreateCollectionFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-black uppercase tracking-widest text-slate-400">Connected Facebook Page</label>
+          <label className="text-xs font-black uppercase tracking-[0.22em] text-[#8b8594]">Connected Facebook Page</label>
           <div className="relative">
             <Facebook className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
-            <select name="pageId" className="w-full h-12 pl-12 pr-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold bg-white appearance-none" required>
+            <select name="pageId" className="h-12 w-full appearance-none bg-transparent pl-12 pr-4 font-bold" required>
               <option value="">Select a page...</option>
               {pages.map(page => (
                 <option key={page.id} value={page.id}>{page.name}</option>
               ))}
             </select>
           </div>
-          <p className="text-xs text-slate-500">Comments will be synced from this page only.</p>
+          <p className="text-xs text-[#6b6b6b]">Comments will be synced from this page only.</p>
         </div>
 
         {syncStatus && (
-          <div className="rounded-xl bg-indigo-50 p-4 border border-indigo-100 flex items-center animate-pulse">
-            <div className="h-2 w-2 rounded-full bg-indigo-600 mr-3"></div>
-            <p className="text-sm font-bold text-indigo-700">{syncStatus}</p>
+          <div className="flex items-center rounded-[18px] border border-[#dccdfb] bg-[#f3edff] p-4 animate-pulse">
+            <div className="mr-3 h-2 w-2 rounded-full bg-[#7a62b7]"></div>
+            <p className="text-sm font-bold text-[#7a62b7]">{syncStatus}</p>
           </div>
         )}
         
         <div className="pt-4">
           <Button 
             type="submit"
-            className="w-full h-14 rounded-2xl bg-indigo-600 text-lg font-black shadow-lg shadow-indigo-100"
+            className="h-14 w-full text-lg font-black"
             disabled={isPending}
           >
             {isPending ? (syncStatus || 'Processing...') : 'Create Collection and Start Import'}
@@ -134,4 +134,3 @@ export function CreateCollectionForm({ pages }: CreateCollectionFormProps) {
     </>
   );
 }
-
