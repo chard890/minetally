@@ -14,6 +14,7 @@ import { FacebookPageRepository } from '@/repositories/facebook-page.repository'
 import { winnerIntegrityService } from '@/services/winner-integrity.service';
 import { confirmedWinnerService } from '@/services/confirmed-winner.service';
 import { appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
+import { decryptToken } from '@/lib/token-crypto';
 import { revalidatePath } from 'next/cache';
 import { MetaComment } from '@/types';
 
@@ -131,6 +132,10 @@ function hasCommentSourceMetadata(rawMedia: unknown) {
   ].some((value) => typeof value === 'string' && value.trim().length > 0);
 }
 
+function getStoredPageAccessToken(token: string | null | undefined) {
+  return decryptToken(token) ?? null;
+}
+
 async function backfillRawMediaByBatchPost(params: {
   batchPostId: string | null | undefined;
   accessToken: string;
@@ -186,9 +191,8 @@ export async function syncCollectionPosts(collectionId: string) {
 
   if (!collection) throw new Error('Collection not found');
   if (!collection.page) throw new Error('Linked Facebook Page not found');
-  if (!collection.page.accessToken) throw new Error('Facebook Page access token not found');
-
-  const accessToken = collection.page.accessToken;
+  const accessToken = getStoredPageAccessToken(collection.page.accessToken);
+  if (!accessToken) throw new Error('Facebook Page access token not found');
 
   const posts = await metaService.getPagePosts(
     collection.page.metaPageId,
@@ -269,7 +273,8 @@ export async function syncBatchCommentsAction(batchId: string) {
     if (!batch) throw new Error('Batch not found');
     if (!batch.collection.page) throw new Error('Linked Facebook Page not found');
     
-    const accessToken = batch.collection.page.accessToken;
+    const accessToken = getStoredPageAccessToken(batch.collection.page.accessToken);
+    if (!accessToken) throw new Error('Facebook Page access token not found');
     const collectionId = batch.collectionId;
     const settings = await settingsService.getSettings();
     let totalWinnersDetected = 0;
@@ -282,7 +287,7 @@ export async function syncBatchCommentsAction(batchId: string) {
 
       const rawMedia = await backfillRawMediaByBatchPost({
         batchPostId: batch.metaPostId,
-        accessToken: accessToken as string,
+        accessToken,
         itemId: item.id,
         metaMediaId: item.metaMediaId,
         currentRawMedia: item.raw_media_json,
@@ -290,7 +295,7 @@ export async function syncBatchCommentsAction(batchId: string) {
       
       appendFileSync(logPath, `[ACTION] Syncing comments for item ${item.id} (media: ${item.metaMediaId})\n`);
       
-      const comments = await metaService.getMediaComments(item.metaMediaId, accessToken as string, {
+      const comments = await metaService.getMediaComments(item.metaMediaId, accessToken, {
         pageId: batch.collection.page.metaPageId,
         batchPostId: batch.metaPostId,
         itemId: item.id,
@@ -561,17 +566,19 @@ export async function syncItemClaims(itemId: string) {
     if (!item.metaMediaId) throw new Error('Item media ID not found');
 
     const page = item.batchPost.collection.page;
-    if (!page?.accessToken) throw new Error('Facebook Page access token not found');
+    if (!page) throw new Error('Linked Facebook Page not found');
+    const accessToken = getStoredPageAccessToken(page?.accessToken);
+    if (!accessToken) throw new Error('Facebook Page access token not found');
 
     const rawMedia = await backfillRawMediaByBatchPost({
       batchPostId: item.batchPost.metaPostId,
-      accessToken: page.accessToken,
+      accessToken,
       itemId,
       metaMediaId: item.metaMediaId,
       currentRawMedia: item.raw_media_json,
     });
 
-    const comments = await metaService.getMediaComments(item.metaMediaId, page.accessToken, {
+    const comments = await metaService.getMediaComments(item.metaMediaId, accessToken, {
       pageId: page.metaPageId,
       batchPostId: item.batchPost.metaPostId,
       itemId,

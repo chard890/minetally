@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { MetaPage, MetaPost, MetaMedia, MetaComment } from '@/types';
 import { appendSyncDiagnostic, appendSyncTrace } from '@/lib/sync-diagnostics';
-import { inspectMetaAccessToken } from '@/services/meta/meta-token-diagnostics';
+import { inspectMetaAccessToken, maskToken } from '@/services/meta/meta-token-diagnostics';
 
 const GRAPH_API_URL = 'https://graph.facebook.com/v19.0';
 type GraphListResponse<T> = { data?: T[]; error?: { message?: string } };
@@ -27,6 +27,15 @@ type CommentFetchResult = {
 };
 
 const COMMENT_FIELDS = 'id,message,created_time,from{id,name},parent{id,message},comments.limit(100){id,message,created_time,from{id,name},parent{id,message}}';
+
+function sanitizeGraphEndpoint(endpoint: string) {
+  const url = new URL(endpoint);
+  const accessToken = url.searchParams.get('access_token');
+  if (accessToken) {
+    url.searchParams.set('access_token', maskToken(accessToken));
+  }
+  return url.toString();
+}
 
 type CommentSourceKind =
   | 'media_object'
@@ -90,7 +99,7 @@ export class MetaPostService {
         url += `&until=${Math.floor(untilDate.getTime() / 1000)}`;
       }
       
-      console.log(`[MetaPostService] Fetching posts: ${url}`);
+      console.log(`[MetaPostService] Fetching posts for page ${pageId} with masked token ${maskToken(accessToken)}`);
       const response = await fetch(url);
       const data = await response.json() as GraphListResponse<MetaPost>;
 
@@ -364,7 +373,7 @@ export class MetaCommentService {
 
       return {
         candidate,
-        endpoint,
+        endpoint: sanitizeGraphEndpoint(endpoint),
         comments,
         commentsWithAuthorName: comments.filter((comment) => Boolean(comment.from?.name?.trim())).length,
         commentsWithoutFrom: comments.filter((comment) => !comment.from).length,
@@ -375,7 +384,7 @@ export class MetaCommentService {
     } catch (error) {
       return {
         candidate,
-        endpoint,
+        endpoint: sanitizeGraphEndpoint(endpoint),
         comments: [],
         commentsWithAuthorName: 0,
         commentsWithoutFrom: 0,

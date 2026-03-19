@@ -69,7 +69,7 @@ function NavIconButton({
 
 export default function Sidebar({
   connectedPageId,
-  connectedPageName = 'Connected Page',
+  connectedPageName,
   isTokenExpired = false,
 }: {
   connectedPageId?: string;
@@ -80,10 +80,11 @@ export default function Sidebar({
   const primaryNavItems = navItems.slice(0, 4);
   const secondaryNavItems = navItems.slice(4);
   const [pageImageError, setPageImageError] = useState(false);
+  const hasConnectedPage = Boolean(connectedPageId && connectedPageName?.trim());
   const connectedPageImageUrl = connectedPageId
     ? `https://graph.facebook.com/${connectedPageId}/picture?type=large`
     : null;
-  const pageInitials = connectedPageName
+  const pageInitials = (connectedPageName ?? '')
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
@@ -110,7 +111,7 @@ export default function Sidebar({
         <div className="mt-5 w-full px-1">
           <div className="overflow-hidden rounded-[26px] border border-white/55 bg-[rgba(255,255,255,0.5)] p-3 backdrop-blur-[14px] shadow-[0_14px_30px_rgba(110,91,140,0.14),inset_0_1px_0_rgba(255,255,255,0.4)]">
             <div className="relative h-[132px] overflow-hidden rounded-[20px] bg-[linear-gradient(135deg,rgba(255,142,110,0.16),rgba(183,156,245,0.22))]">
-              {connectedPageImageUrl && !pageImageError ? (
+              {hasConnectedPage && connectedPageImageUrl && !pageImageError ? (
                 <img
                   src={connectedPageImageUrl}
                   alt={connectedPageName}
@@ -119,7 +120,7 @@ export default function Sidebar({
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(145deg,#f4d7ce,#ecdff5)] text-xl font-black text-[#6a5d80]">
-                  {pageInitials || 'FB'}
+                  {hasConnectedPage ? (pageInitials || 'FB') : 'FB'}
                 </div>
               )}
               <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,transparent,rgba(255,247,241,0.9))]" />
@@ -128,20 +129,30 @@ export default function Sidebar({
                   <div
                     className={cn(
                       'h-2.5 w-2.5 shrink-0 rounded-full',
-                      isTokenExpired ? 'bg-[#ffb35c] animate-pulse' : 'bg-[#8ecfb5]',
+                      !hasConnectedPage
+                        ? 'bg-[#d9d0e8]'
+                        : isTokenExpired
+                          ? 'bg-[#ffb35c] animate-pulse'
+                          : 'bg-[#8ecfb5]',
                     )}
                   />
                   <p className="truncate text-[12px] font-bold leading-none text-[#2b2b2b]">
-                    {connectedPageName}
+                    {hasConnectedPage ? connectedPageName : 'No Facebook Page'}
                   </p>
-                  {isTokenExpired ? (
+                  {!hasConnectedPage ? (
+                    <Facebook className="ml-auto h-3.5 w-3.5 shrink-0 text-[#b8afc8]" />
+                  ) : isTokenExpired ? (
                     <AlertCircle className="ml-auto h-3.5 w-3.5 shrink-0 text-[#d48f30]" />
                   ) : (
                     <Facebook className="ml-auto h-3.5 w-3.5 shrink-0 text-[#7a62b7]" />
                   )}
                 </div>
                 <p className="mt-1 text-[10px] font-medium leading-none text-[#6b6b6b]">
-                  {isTokenExpired ? 'Reconnect required' : 'Connected Facebook page'}
+                  {!hasConnectedPage
+                    ? 'Connect a page in Settings'
+                    : isTokenExpired
+                      ? 'Reconnect required'
+                      : 'Connected Facebook page'}
                 </p>
               </div>
             </div>

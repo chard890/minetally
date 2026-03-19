@@ -19,7 +19,6 @@ export default async function RootLayout({
 }>) {
   const settings = await settingsService.getSettings();
   const connectedPage = await FacebookPageRepository.getConnectedPage();
-  const pageName = connectedPage?.name ?? settings.facebookIntegration.connectedPageName;
 
   return (
     <html lang="en" className="h-full">
@@ -27,7 +26,7 @@ export default async function RootLayout({
         <div className="flex min-h-full">
           <Sidebar 
             connectedPageId={connectedPage?.id}
-            connectedPageName={pageName} 
+            connectedPageName={connectedPage?.name} 
             isTokenExpired={settings.facebookIntegration.isTokenExpired} 
           />
           <main className="relative flex-1 overflow-y-auto pl-0 md:pl-2">
