@@ -17,6 +17,8 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { RecentWinningClaim } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 function getInitials(name: string) {
   return name
     .split(" ")
