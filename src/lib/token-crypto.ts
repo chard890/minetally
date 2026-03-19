@@ -6,7 +6,7 @@ function getEncryptionSecret() {
   const secret = process.env.TOKEN_ENCRYPTION_SECRET?.trim();
 
   if (!secret) {
-    throw new Error('TOKEN_ENCRYPTION_SECRET is not configured.');
+    return null;
   }
 
   return createHash('sha256').update(secret).digest();
@@ -18,8 +18,13 @@ export function encryptToken(value: string) {
     return trimmedValue;
   }
 
+  const secret = getEncryptionSecret();
+  if (!secret) {
+    throw new Error('TOKEN_ENCRYPTION_SECRET is not configured.');
+  }
+
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', getEncryptionSecret(), iv);
+  const cipher = createCipheriv('aes-256-gcm', secret, iv);
   const encrypted = Buffer.concat([cipher.update(trimmedValue, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
 
@@ -35,6 +40,11 @@ export function decryptToken(value: string | null | undefined) {
     return value;
   }
 
+  const secret = getEncryptionSecret();
+  if (!secret) {
+    return null;
+  }
+
   const payload = value.slice(ENCRYPTED_PREFIX.length);
   const [iv, authTag, encrypted] = payload.split('.');
 
@@ -44,7 +54,7 @@ export function decryptToken(value: string | null | undefined) {
 
   const decipher = createDecipheriv(
     'aes-256-gcm',
-    getEncryptionSecret(),
+    secret,
     Buffer.from(iv, 'base64url'),
   );
   decipher.setAuthTag(Buffer.from(authTag, 'base64url'));

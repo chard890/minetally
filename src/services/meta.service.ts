@@ -1,6 +1,6 @@
 import { appendFileSync } from 'node:fs';
 import { MetaPage, MetaPost, MetaMedia, MetaComment } from '../types';
-import { appendSyncDiagnostic, appendSyncTrace } from '@/lib/sync-diagnostics';
+import { appendSyncDiagnostic, appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { inspectMetaAccessToken, maskToken } from '@/services/meta/meta-token-diagnostics';
 
 type GraphResponse<T> = {
@@ -179,7 +179,7 @@ export class MetaService {
     accessToken: string,
     context?: CommentFetchContext,
   ): Promise<MetaComment[]> {
-    const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\sync-diagnostics.log';
+    const logPath = getSyncDiagnosticsLogPath();
     try {
       const tokenInspection = await inspectMetaAccessToken(accessToken);
       const candidates = this.buildCommentSourceCandidates(mediaId, context?.rawMedia, context?.batchPostId);

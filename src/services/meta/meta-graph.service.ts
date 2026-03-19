@@ -1,6 +1,6 @@
 import { appendFileSync } from 'node:fs';
 import { MetaPage, MetaPost, MetaMedia, MetaComment } from '@/types';
-import { appendSyncDiagnostic, appendSyncTrace } from '@/lib/sync-diagnostics';
+import { appendSyncDiagnostic, appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { inspectMetaAccessToken, maskToken } from '@/services/meta/meta-token-diagnostics';
 
 const GRAPH_API_URL = 'https://graph.facebook.com/v19.0';
@@ -135,7 +135,7 @@ export class MetaMediaService {
    * This fetches child attachments (the "items").
    */
   static async getPostAttachments(postId: string, accessToken: string): Promise<MetaMedia[]> {
-    const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\sync-diagnostics.log';
+    const logPath = getSyncDiagnosticsLogPath();
     try {
       // Fetch attachments with subattachments limit increased to 100 to get all photos
       const response = await fetch(`${GRAPH_API_URL}/${postId}/attachments?fields=description,media,subattachments.limit(200){description,media,target,type}&access_token=${accessToken}`);
@@ -235,7 +235,7 @@ export class MetaCommentService {
     accessToken: string,
     context?: CommentFetchContext,
   ): Promise<MetaComment[]> {
-    const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\sync-diagnostics.log';
+    const logPath = getSyncDiagnosticsLogPath();
     try {
       const tokenInspection = await inspectMetaAccessToken(accessToken);
       const candidates = this.buildCommentSourceCandidates(mediaId, context?.rawMedia, context?.batchPostId);

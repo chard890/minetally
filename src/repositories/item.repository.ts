@@ -1,5 +1,6 @@
 import { appendFileSync } from 'node:fs';
 import { getServiceSupabase } from '@/lib/supabase';
+import { getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 
 type ItemUpdate = Record<string, unknown>;
 type ItemUpsertInput = {
@@ -71,7 +72,7 @@ export class ItemRepository {
   }
 
   static async upsertItem(item: ItemUpsertInput) {
-    const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\sync-diagnostics.log';
+    const logPath = getSyncDiagnosticsLogPath();
     const { data, error } = await getServiceSupabase()
       .from('items')
       .upsert(item, { onConflict: 'meta_media_id' })

@@ -1,5 +1,6 @@
 import { appendFileSync } from 'node:fs';
 import { getServiceSupabase } from '@/lib/supabase';
+import { getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { BatchSyncStatus, ClaimWord, CollectionListItem, CollectionStatus, CollectionWorkflowDetail, ItemStatus, PriceReviewStatus } from '@/types';
 
 type CollectionListRow = {
@@ -362,7 +363,7 @@ export class CollectionRepository {
   }
 
   static async recalculateCollectionMetrics(collectionId: string) {
-    const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\sync-diagnostics.log';
+    const logPath = getSyncDiagnosticsLogPath();
 
     // 1. Count items by status
     const { data: statusCounts, error: statusError } = await getServiceSupabase()
