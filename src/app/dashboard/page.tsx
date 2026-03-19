@@ -2,10 +2,10 @@ import Link from "next/link";
 import {
   AlertCircle,
   Calendar,
-  Facebook,
   Layers,
-  Lock,
+  Search,
   ShoppingBag,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -15,7 +15,16 @@ import { formatClaimWord, formatCurrency, formatDateTime, formatDateRange } from
 import { collectionService } from "@/services/collection.service";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
-import { CollectionListItem, RecentWinningClaim } from "@/types";
+import { RecentWinningClaim } from "@/types";
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 export default async function DashboardPage() {
   if (!isSupabaseConfigured()) {
@@ -27,6 +36,54 @@ export default async function DashboardPage() {
   const buyerTotals = activeCollection 
     ? await collectionService.getBuyerTotals(activeCollection.id)
     : [];
+  const activeItems = activeCollection
+    ? activeCollection.batches.flatMap((batch) => batch.items)
+    : [];
+  const derivedActiveBatchPosts = activeCollection ? activeCollection.batches.length : 0;
+  const derivedActiveItemPhotos = activeItems.length;
+  const derivedActiveClaimedItems = activeItems.filter((item) =>
+    item.status === "claimed" || item.status === "manual_override" || item.status === "locked",
+  ).length;
+  const derivedActiveNeedsReview = activeItems.filter((item) => item.status === "needs_review").length;
+  const derivedActiveCollectionValue = activeItems.reduce((sum, item) => {
+    if (
+      item.resolvedPrice === null ||
+      !["claimed", "manual_override", "locked"].includes(item.status)
+    ) {
+      return sum;
+    }
+
+    return sum + item.resolvedPrice;
+  }, 0);
+  const dashboardImportedBatchPosts =
+    dashboard.importedBatchPosts > 0 ? dashboard.importedBatchPosts : derivedActiveBatchPosts;
+  const dashboardClaimedItems =
+    dashboard.claimedItems > 0 ? dashboard.claimedItems : derivedActiveClaimedItems;
+  const dashboardNeedsReview =
+    dashboard.needsReview > 0 ? dashboard.needsReview : derivedActiveNeedsReview;
+  const hasImportedData = Boolean(
+    activeCollection &&
+      (
+        derivedActiveBatchPosts > 0 ||
+        derivedActiveItemPhotos > 0 ||
+        derivedActiveClaimedItems > 0 ||
+        derivedActiveNeedsReview > 0 ||
+        dashboard.recentWinningClaims.length > 0
+      ),
+  );
+  const metricValue = (value: number) => (value === 0 && !hasImportedData ? "Not synced" : value);
+  const collectionValueLabel =
+    activeCollection && derivedActiveCollectionValue === 0 && !hasImportedData
+      ? "No value yet"
+      : formatCurrency(derivedActiveCollectionValue);
+  const topBuyers = buyerTotals.slice(0, 5);
+  const totalBuyerClaimValue = buyerTotals.reduce((sum, buyer) => sum + buyer.totalAmount, 0);
+  const totalBuyerClaimedItems = buyerTotals.reduce((sum, buyer) => sum + buyer.totalWonItems, 0);
+  const manualFixes = activeCollection.batches
+    .flatMap((batch) => batch.items)
+    .filter((item) => item.hasManualOverride).length;
+  const pendingIssues = activeCollection.batches.filter((batch) => batch.syncStatus === "attention").length;
+  const liveStatusRows = activeCollection.batches.slice(0, 5);
 
   if (!activeCollection) {
     return (
@@ -50,80 +107,140 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Seller Dashboard</h1>
-          <p className="mt-1 text-slate-500">
-            Photo-based claim reconciliation for your Facebook ukay workflow.
-          </p>
-        </div>
-        <div className="flex space-x-3">
-          <Link href="/collections">
-            <Button variant="outline">View Collections</Button>
-          </Link>
-          <Link href={`/collections/${activeCollection.id}`}>
-            <Button className="bg-indigo-600">
-              <Facebook className="mr-2 h-4 w-4" />
-              Open Live Collection
-            </Button>
-          </Link>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between xl:flex-1">
+          <div>
+            <h1 className="text-[30px] font-semibold tracking-tight text-slate-900">Seller Dashboard</h1>
+            <p className="mt-0.5 text-sm leading-6 text-slate-500">
+              Photo-based claim reconciliation for your Facebook ukay workflow.
+            </p>
+          </div>
+          <div className="relative w-full max-w-[360px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8b8594]" />
+            <input
+              type="text"
+              placeholder="Search buyers, batches, or items"
+              className="h-11 w-full pl-10 pr-4 text-sm font-medium"
+            />
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          label="Active Collections"
-          value={dashboard.activeCollections}
-          icon={Calendar}
-          colorClass="text-blue-600"
-          backgroundClass="bg-blue-50"
-        />
-        <MetricCard
-          label="Imported Batch Posts"
-          value={dashboard.importedBatchPosts}
-          icon={Layers}
-          colorClass="text-indigo-600"
-          backgroundClass="bg-indigo-50"
-        />
-        <MetricCard
-          label="Claimed Items"
-          value={dashboard.claimedItems}
-          icon={ShoppingBag}
-          colorClass="text-emerald-600"
-          backgroundClass="bg-emerald-50"
-        />
-        <MetricCard
-          label="Needs Review"
-          value={dashboard.needsReview}
-          icon={AlertCircle}
-          colorClass="text-amber-600"
-          backgroundClass="bg-amber-50"
-        />
-      </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.95fr)]">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+            <MetricCard
+              label="Active Collections"
+              value={dashboard.activeCollections}
+              icon={Calendar}
+              colorClass="text-blue-600"
+              backgroundClass="bg-blue-50"
+            />
+            <MetricCard
+              label="Imported Batch Posts"
+              value={metricValue(dashboardImportedBatchPosts)}
+              icon={Layers}
+              colorClass="text-indigo-600"
+              backgroundClass="bg-indigo-50"
+            />
+            <MetricCard
+              label="Claimed Items"
+              value={metricValue(dashboardClaimedItems)}
+              icon={ShoppingBag}
+              colorClass="text-emerald-600"
+              backgroundClass="bg-emerald-50"
+            />
+            <MetricCard
+              label="Needs Review"
+              value={metricValue(dashboardNeedsReview)}
+              icon={AlertCircle}
+              colorClass="text-amber-600"
+              backgroundClass="bg-amber-50"
+            />
+          </div>
 
-      <div className="grid gap-8 lg:grid-cols-3">
-        <div className="space-y-8 lg:col-span-2">
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader className="border-b border-slate-50 pb-4">
+            <CardHeader className="border-b border-slate-50 px-5 py-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-bold">Active Collection Overview</CardTitle>
+                <CardTitle className="text-base font-semibold">Recent Winning Claims</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-5 pt-4">
+              {dashboard.recentWinningClaims.length > 0 ? (
+                <div className="space-y-3">
+                  {dashboard.recentWinningClaims.map((claim: RecentWinningClaim) => (
+                    <Link
+                      key={claim.itemId}
+                      href={`/collections/${claim.collectionId}/items/${claim.itemId}`}
+                      className="group flex items-center gap-3 rounded-2xl border border-transparent px-1 py-1.5 hover:border-slate-100"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[rgba(255,142,110,0.14)] text-[11px] font-bold text-[#7a62b7] ring-1 ring-white/50">
+                          {getInitials(claim.buyerName)}
+                        </div>
+                        <div className="h-9 w-9 overflow-hidden rounded-xl ring-1 ring-slate-200">
+                          <img
+                            src={claim.thumbnailUrl}
+                            alt={`Item ${claim.itemNumber}`}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-semibold leading-none text-slate-900 group-hover:text-indigo-600">
+                            {claim.buyerName}
+                          </span>
+                          <StatusBadge
+                            label={formatClaimWord(claim.claimWord)}
+                            variant="emerald"
+                            className="px-2 py-0.5 text-[10px]"
+                          />
+                        </div>
+                        <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                          Item #{String(claim.itemNumber).padStart(2, "0")} from {claim.batchTitle}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold leading-none text-slate-900">
+                          {formatCurrency(claim.resolvedPrice)}
+                        </p>
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] leading-none text-slate-400">
+                          {formatDateTime(claim.claimedAt)}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-500">
+                  Winning claims will appear here after you sync comments and the app resolves first claimants.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm ring-1 ring-slate-100">
+            <CardHeader className="border-b border-slate-50 px-5 py-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold">Active Collection Overview</CardTitle>
                 <StatusBadge label="Live Now" variant="emerald" />
               </div>
             </CardHeader>
-            <CardContent className="pt-6">
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-6">
-                <div className="mb-6 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-900">
+            <CardContent className="p-5 pt-4">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-lg font-semibold leading-tight text-slate-900">
                       {activeCollection.name}
                     </h3>
-                    <p className="text-sm text-slate-500">
+                    <p className="mt-1 text-sm leading-5 text-slate-500">
                       {formatDateRange(
                         activeCollection.startDate,
                         activeCollection.endDate,
                       )}{" "}
-                      | {activeCollection.totalBatchPosts} batch posts imported
+                      | {derivedActiveBatchPosts} batch posts imported
                     </p>
                   </div>
                   <Link href={`/collections/${activeCollection.id}`}>
@@ -133,175 +250,181 @@ export default async function DashboardPage() {
                   </Link>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-4">
-                  <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="rounded-xl border border-slate-100 bg-white px-3.5 py-3 shadow-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Item Photos
                     </p>
-                    <p className="text-2xl font-bold text-slate-900">
-                      {activeCollection.totalItemPhotos}
+                    <p className="mt-1.5 text-xl font-semibold leading-none text-slate-900">
+                      {metricValue(derivedActiveItemPhotos)}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  <div className="rounded-xl border border-slate-100 bg-white px-3.5 py-3 shadow-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Claimed
                     </p>
-                    <p className="text-2xl font-bold text-emerald-600">
-                      {activeCollection.totalClaimedItems}
+                    <p className="mt-1.5 text-xl font-semibold leading-none text-emerald-600">
+                      {metricValue(derivedActiveClaimedItems)}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  <div className="rounded-xl border border-slate-100 bg-white px-3.5 py-3 shadow-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Needs Review
                     </p>
-                    <p className="text-2xl font-bold text-amber-600">
-                      {activeCollection.needsReviewCount}
+                    <p className="mt-1.5 text-xl font-semibold leading-none text-amber-600">
+                      {metricValue(derivedActiveNeedsReview)}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  <div className="rounded-xl border border-slate-100 bg-white px-3.5 py-3 shadow-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Collection Value
                     </p>
-                    <p className="text-2xl font-bold text-slate-900">
-                      {formatCurrency(activeCollection.totalCollectionValue)}
+                    <p className="mt-1.5 text-xl font-semibold leading-none text-slate-900">
+                      {collectionValueLabel}
                     </p>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader className="border-b border-slate-50 pb-4">
-              <CardTitle className="text-lg font-bold">Recent Winning Claims</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <div className="space-y-5">
-                {dashboard.recentWinningClaims.map((claim: RecentWinningClaim) => (
-                  <Link
-                    key={claim.itemId}
-                    href={`/collections/${claim.collectionId}/items/${claim.itemId}`}
-                    className="group flex items-center space-x-4"
-                  >
-                    <div className="h-12 w-12 overflow-hidden rounded-2xl ring-1 ring-slate-200">
-                      <img
-                        src={claim.thumbnailUrl}
-                        alt={`Item ${claim.itemNumber}`}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="truncate font-bold text-slate-900 group-hover:text-indigo-600">
-                          {claim.buyerName}
-                        </span>
-                        <StatusBadge
-                          label={formatClaimWord(claim.claimWord)}
-                          variant="emerald"
-                          className="px-2 py-0.5"
-                        />
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        Item #{String(claim.itemNumber).padStart(2, "0")} from {claim.batchTitle}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-slate-900">
-                        {formatCurrency(claim.resolvedPrice)}
-                      </p>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        {formatDateTime(claim.claimedAt)}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="space-y-8">
-          <Card className="border-0 bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500/20">
-            <CardContent className="pt-6">
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-100">
-                Current Running Value
-              </p>
-              <h2 className="mt-2 text-4xl font-black">
-                {formatCurrency(activeCollection.totalCollectionValue)}
-              </h2>
-              <div className="mt-6 flex items-center justify-between border-t border-indigo-500 pt-6">
-                <div className="text-xs">
-                  <p className="font-medium text-indigo-100">Finalizable Buyers</p>
-                  <p className="font-bold">
-                    {buyerTotals.length} buyers
-                  </p>
-                </div>
-                <Lock className="h-5 w-5 text-indigo-200" />
-              </div>
-            </CardContent>
-          </Card>
-
+        <div className="space-y-4">
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader>
-              <CardTitle className="text-sm font-bold uppercase tracking-widest text-slate-400">
-                Recent Finalized Collections
-              </CardTitle>
+            <CardHeader className="border-b border-slate-50 px-5 py-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold">Buyer Totals</CardTitle>
+                <Link href={`/buyers?collectionId=${activeCollection.id}`}>
+                  <Button variant="outline" size="sm">
+                    View Buyer Totals
+                  </Button>
+                </Link>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {dashboard.recentFinalizedCollections.map((collection: CollectionListItem) => (
-                <Link
-                  key={collection.id}
-                  href={`/collections/${collection.id}`}
-                  className="block rounded-2xl border border-slate-100 bg-slate-50/70 p-4 transition-colors hover:border-indigo-100 hover:bg-white"
-                >
-                  <div className="flex items-center justify-between">
+            <CardContent className="p-5 pt-4">
+              {topBuyers.length > 0 ? (
+                <>
+                  <div className="space-y-3">
+                    {topBuyers.map((buyer) => (
+                    <div
+                      key={buyer.buyerId}
+                      className="rounded-2xl border border-slate-100/80 bg-white/45 px-3.5 py-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm font-semibold leading-tight text-slate-900">
+                          {buyer.buyerName}
+                        </p>
+                        <p className="shrink-0 text-sm font-semibold leading-none text-slate-900">
+                          {formatCurrency(buyer.totalAmount)}
+                        </p>
+                      </div>
+                        <p className="mt-1 text-[11px] leading-none text-slate-500">
+                          {buyer.totalWonItems} {buyer.totalWonItems === 1 ? "item" : "items"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
                     <div>
-                      <p className="font-bold text-slate-900">{collection.name}</p>
-                      <p className="text-xs text-slate-500">
-                        Finalized {collection.finalizeDate ? formatDateTime(collection.finalizeDate) : "later"}
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Total Buyers
+                      </p>
+                      <p className="mt-1 text-sm font-semibold leading-none text-slate-900">
+                        {buyerTotals.length}
                       </p>
                     </div>
-                    <StatusBadge
-                      label={collection.status}
-                      variant={collection.status === "locked" ? "slate" : "indigo"}
-                    />
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Total Claimed Amount
+                      </p>
+                      <p className="mt-1 text-sm font-semibold leading-none text-slate-900">
+                        {formatCurrency(totalBuyerClaimValue)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-xs font-medium text-slate-500">
-                    <span>{collection.totalClaimedItems} claimed</span>
-                    <span>{formatCurrency(collection.totalCollectionValue)}</span>
-                  </div>
-                </Link>
-              ))}
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-500">
+                  Buyer totals will populate once winning claims have been resolved in the live collection.
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader>
-              <CardTitle className="text-sm font-bold uppercase tracking-widest text-slate-400">
+            <CardHeader className="px-5 py-4">
+              <CardTitle className="text-sm font-semibold uppercase tracking-[0.2em] leading-none text-slate-400">
                 Live Collection Status
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {activeCollection.batches.slice(0, 4).map((batch) => (
-                <div key={batch.id} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{batch.title}</p>
-                    <p className="text-xs text-slate-500">
-                      {batch.claimedItems}/{batch.itemPhotos} claimed
-                    </p>
+            <CardContent className="space-y-3 p-5 pt-0">
+              {liveStatusRows.length > 0 ? (
+                liveStatusRows.map((batch) => (
+                  <div key={batch.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100/70 bg-white/40 px-3.5 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold leading-tight text-slate-900">{batch.title}</p>
+                      <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                        {batch.claimedItems} claimed of {batch.itemPhotos}
+                      </p>
+                    </div>
+                    <StatusBadge
+                      label={batch.syncStatus}
+                      variant={
+                        batch.syncStatus === "synced"
+                          ? "indigo"
+                          : batch.syncStatus === "attention"
+                            ? "amber"
+                            : "slate"
+                      }
+                    />
                   </div>
-                  <StatusBadge
-                    label={batch.syncStatus}
-                    variant={
-                      batch.syncStatus === "synced"
-                        ? "indigo"
-                        : batch.syncStatus === "attention"
-                          ? "amber"
-                          : "slate"
-                    }
-                  />
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-500">
+                  No batch posts have been attached to this collection yet.
                 </div>
-              ))}
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm ring-1 ring-slate-100">
+            <CardHeader className="px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-[#7a62b7]" />
+                <CardTitle className="text-sm font-semibold uppercase tracking-[0.2em] leading-none text-slate-400">
+                  Needs Review
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-5 pt-0">
+              <div className="rounded-2xl border border-slate-100/70 bg-white/40 px-3.5 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Pending Issues
+                </p>
+                <p className="mt-1 text-xl font-semibold leading-none text-slate-900">
+                  {derivedActiveNeedsReview}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-100/70 bg-white/40 px-3.5 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Manual Fixes Needed
+                </p>
+                <p className="mt-1 text-xl font-semibold leading-none text-slate-900">
+                  {manualFixes}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-100/70 bg-white/40 px-3.5 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Batch Alerts
+                </p>
+                <p className="mt-1 text-xl font-semibold leading-none text-slate-900">
+                  {pendingIssues}
+                </p>
+              </div>
+              <p className="text-[11px] leading-4 text-slate-500">
+                Review queue tracks unresolved claim conflicts, manual overrides, and sync attention states.
+              </p>
             </CardContent>
           </Card>
         </div>

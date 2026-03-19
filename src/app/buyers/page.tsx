@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Download, ExternalLink, Printer, Search } from "lucide-react";
+import { Download, ExternalLink, Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { BuyerSearchInput } from "@/components/buyers/BuyerSearchInput";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
 import { formatClaimWord, formatCurrency, formatDateTime } from "@/lib/format";
 import { collectionService } from "@/services/collection.service";
@@ -12,6 +13,7 @@ export default async function BuyersPage({
   searchParams: Promise<{ 
     collectionId?: string; 
     buyerId?: string;
+    query?: string;
     sortBy?: "name" | "amount" | "items";
     sortOrder?: "asc" | "desc";
   }>;
@@ -24,10 +26,18 @@ export default async function BuyersPage({
     collections[0]?.id;
     
   let buyers = selectedCollectionId ? await collectionService.getBuyerTotals(selectedCollectionId) : [];
+  const query = resolvedSearchParams.query?.trim() ?? "";
+  const normalizedQuery = query.toLocaleLowerCase();
   
-  // Sorting logic based on searchParams
   const sortBy = resolvedSearchParams.sortBy ?? "amount";
   const sortOrder = resolvedSearchParams.sortOrder ?? "desc";
+
+  if (normalizedQuery) {
+    buyers = buyers.filter((buyer) =>
+      buyer.buyerName.toLocaleLowerCase().includes(normalizedQuery) ||
+      buyer.collectionName.toLocaleLowerCase().includes(normalizedQuery)
+    );
+  }
 
   buyers = [...buyers].sort((a, b) => {
     let comparison = 0;
@@ -46,21 +56,54 @@ export default async function BuyersPage({
     ? buyers.find((buyer) => buyer.buyerId === selectedBuyerId)
     : undefined;
 
+  const buildBuyersHref = (overrides: Record<string, string | undefined>) => {
+    const params = new URLSearchParams();
+
+    const nextCollectionId = overrides.collectionId ?? selectedCollectionId;
+    const nextBuyerId = overrides.buyerId ?? resolvedSearchParams.buyerId;
+    const nextQuery = overrides.query ?? query;
+    const nextSortBy = overrides.sortBy ?? sortBy;
+    const nextSortOrder = overrides.sortOrder ?? sortOrder;
+
+    if (nextCollectionId) {
+      params.set("collectionId", nextCollectionId);
+    }
+
+    if (nextBuyerId) {
+      params.set("buyerId", nextBuyerId);
+    }
+
+    if (nextQuery) {
+      params.set("query", nextQuery);
+    }
+
+    if (nextSortBy) {
+      params.set("sortBy", nextSortBy);
+    }
+
+    if (nextSortOrder) {
+      params.set("sortOrder", nextSortOrder);
+    }
+
+    return `/buyers?${params.toString()}`;
+  };
+
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Buyer Totals</h1>
-          <p className="mt-1 text-slate-500">
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#8b8594]">Core Ledger</p>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-[#2b2b2b]">Buyer Totals</h1>
+          <p className="mt-2 text-[#6b6b6b]">
             Verify buyer totals with thumbnails before sending invoices.
           </p>
         </div>
-        <div className="flex space-x-3">
-          <Button variant="outline" className="rounded-xl border-slate-200">
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline">
             <Printer className="mr-2 h-4 w-4" />
             Print All
           </Button>
-          <Button variant="outline" className="rounded-xl border-slate-200">
+          <Button variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
@@ -71,11 +114,14 @@ export default async function BuyersPage({
         {collections.map((collection) => (
           <Link
             key={collection.id}
-            href={`/buyers?collectionId=${collection.id}`}
-            className={`rounded-xl border px-4 py-2 text-sm font-bold transition-colors ${
+            href={buildBuyersHref({
+              collectionId: collection.id,
+              buyerId: undefined,
+            })}
+            className={`rounded-[18px] border px-4 py-2.5 text-sm font-semibold transition-all ${
               collection.id === selectedCollectionId
-                ? "border-indigo-100 bg-indigo-50 text-indigo-700"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                ? "border-white/60 bg-white/82 text-[#2b2b2b] shadow-[0_12px_24px_rgba(110,91,140,0.1)]"
+                : "border-white/50 bg-white/38 text-[#6b6b6b] hover:bg-white/58"
             }`}
           >
             {collection.name}
@@ -85,50 +131,46 @@ export default async function BuyersPage({
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card className="overflow-hidden rounded-2xl border-0 shadow-sm ring-1 ring-slate-100">
+          <Card className="overflow-hidden border-0">
             <CardContent className="p-0">
-                <div className="flex items-center gap-4 border-b border-slate-50 bg-white p-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Search buyers..."
-                      className="w-full rounded-xl border-0 bg-slate-50 py-2.5 pl-10 pr-4 text-sm font-medium focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
+                <div className="flex items-center gap-4 border-b border-white/45 p-6">
+                  <BuyerSearchInput initialValue={query} />
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-400 mr-2">Sort:</span>
-                    <Link href={`/buyers?collectionId=${selectedCollectionId}&sortBy=name&sortOrder=${sortBy === 'name' && sortOrder === 'asc' ? 'desc' : 'asc'}`}>
-                       <Button variant={sortBy === 'name' ? 'primary' : 'outline'} size="sm" className="rounded-xl h-9 font-bold">Name</Button>
+                    <span className="mr-2 text-xs font-black uppercase tracking-[0.22em] text-[#8b8594]">Sort:</span>
+                    <Link href={buildBuyersHref({ sortBy: "name", sortOrder: sortBy === "name" && sortOrder === "asc" ? "desc" : "asc", buyerId: undefined })}>
+                       <Button variant={sortBy === 'name' ? 'primary' : 'outline'} size="sm" className="h-9">Name</Button>
                     </Link>
-                    <Link href={`/buyers?collectionId=${selectedCollectionId}&sortBy=items&sortOrder=${sortBy === 'items' && sortOrder === 'asc' ? 'desc' : 'asc'}`}>
-                       <Button variant={sortBy === 'items' ? 'primary' : 'outline'} size="sm" className="rounded-xl h-9 font-bold">Items</Button>
+                    <Link href={buildBuyersHref({ sortBy: "items", sortOrder: sortBy === "items" && sortOrder === "asc" ? "desc" : "asc", buyerId: undefined })}>
+                       <Button variant={sortBy === 'items' ? 'primary' : 'outline'} size="sm" className="h-9">Items</Button>
                     </Link>
-                    <Link href={`/buyers?collectionId=${selectedCollectionId}&sortBy=amount&sortOrder=${sortBy === 'amount' && sortOrder === 'asc' ? 'desc' : 'asc'}`}>
-                       <Button variant={sortBy === 'amount' ? 'primary' : 'outline'} size="sm" className="rounded-xl h-9 font-bold">Amount</Button>
+                    <Link href={buildBuyersHref({ sortBy: "amount", sortOrder: sortBy === "amount" && sortOrder === "asc" ? "desc" : "asc", buyerId: undefined })}>
+                       <Button variant={sortBy === 'amount' ? 'primary' : 'outline'} size="sm" className="h-9">Amount</Button>
                     </Link>
                   </div>
-                  <div className="rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-600">
+                  <div className="rounded-[18px] bg-white/45 px-4 py-2.5 text-sm font-bold text-[#6b6b6b]">
                     {buyers.length} buyers
                   </div>
                 </div>
 
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-white/40">
                 {buyers.map((buyer) => (
                   <Link
                     key={buyer.buyerId}
-                    href={`/buyers?collectionId=${buyer.collectionId}&buyerId=${buyer.buyerId}`}
-                    className="group flex items-center justify-between p-6 transition-all hover:bg-slate-50/50"
+                    href={buildBuyersHref({
+                      collectionId: buyer.collectionId,
+                      buyerId: buyer.buyerId,
+                    })}
+                    className="group flex items-center justify-between p-6 transition-all hover:bg-white/28"
                   >
                     <div className="flex items-center space-x-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-indigo-100 bg-indigo-50 text-sm font-bold text-indigo-600">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/55 bg-white/65 text-sm font-bold text-[#7a62b7]">
                         {buyer.buyerName.charAt(0)}
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-900 transition-colors group-hover:text-indigo-600">
+                        <h3 className="font-bold text-[#2b2b2b] transition-colors group-hover:text-[#7a62b7]">
                           {buyer.buyerName}
                         </h3>
-                        <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
                           {buyer.collectionName}
                         </p>
                       </div>
@@ -136,16 +178,16 @@ export default async function BuyersPage({
 
                     <div className="flex items-center space-x-8">
                       <div className="text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
                           Total Won Items
                         </p>
-                        <p className="text-sm font-black text-slate-900">{buyer.totalWonItems}</p>
+                        <p className="text-sm font-black text-[#2b2b2b]">{buyer.totalWonItems}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
                           Total Amount
                         </p>
-                        <p className="text-sm font-black text-slate-900">
+                        <p className="text-sm font-black text-[#2b2b2b]">
                           {formatCurrency(buyer.totalAmount)}
                         </p>
                       </div>
@@ -154,30 +196,35 @@ export default async function BuyersPage({
                           label={buyer.collectionStatus}
                           variant={buyer.collectionStatus === "open" ? "emerald" : buyer.collectionStatus === "finalized" ? "indigo" : "slate"}
                         />
-                        <Button variant="outline" size="sm" className="rounded-xl font-bold">
+                        <Button variant="outline" size="sm">
                           View Items
                         </Button>
                       </div>
                     </div>
                   </Link>
                 ))}
+                {buyers.length === 0 ? (
+                  <div className="p-10 text-center text-sm font-medium text-[#6b6b6b]">
+                    No buyers match{query ? ` "${query}"` : " your search"}.
+                  </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>
         </div>
 
         <div className="space-y-6">
-          <Card className="sticky top-8 overflow-hidden rounded-3xl border-0 bg-white shadow-xl ring-1 ring-slate-100">
-            <CardHeader className="bg-slate-900 p-6 text-white">
+          <Card className="sticky top-8 overflow-hidden border-0">
+            <CardHeader className="bg-[linear-gradient(135deg,rgba(255,142,110,0.9),rgba(183,156,245,0.92))] p-6 text-white">
               <div className="flex items-center space-x-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-lg font-bold text-slate-100">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-lg font-bold text-white">
                   {selectedBuyer?.buyerName.charAt(0) ?? "?"}
                 </div>
                 <div>
                   <CardTitle className="text-lg font-bold">
                     {selectedBuyer?.buyerName ?? "Select a buyer"}
                   </CardTitle>
-                  <CardDescription className="text-xs text-slate-400">
+                  <CardDescription className="text-xs text-white/75">
                     Winner breakdown
                   </CardDescription>
                 </div>
@@ -186,12 +233,12 @@ export default async function BuyersPage({
             <CardContent className="space-y-5 p-6">
               {selectedBuyer ? (
                 <>
-                  <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="glass-section flex items-center justify-between rounded-[24px] p-4">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
                         Collection Status
                       </p>
-                      <p className="mt-1 text-sm font-bold text-slate-900">
+                      <p className="mt-1 text-sm font-bold text-[#2b2b2b]">
                         {selectedBuyer.collectionName}
                       </p>
                     </div>
@@ -202,32 +249,32 @@ export default async function BuyersPage({
                   </div>
 
                   <div>
-                    <p className="mb-3 px-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    <p className="mb-3 px-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#8b8594]">
                       Won items ({selectedBuyer.totalWonItems})
                     </p>
-                    <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
+                    <div className="soft-scrollbar max-h-[420px] space-y-3 overflow-y-auto pr-2">
                       {selectedBuyer.items.map((item) => (
                         <Link
                           key={item.itemId}
                           href={`/collections/${selectedBuyer.collectionId}/items/${item.itemId}`}
-                          className="group flex items-center space-x-4 rounded-2xl border border-slate-100 bg-slate-50 p-3 transition-colors hover:border-indigo-100"
+                          className="glass-section group flex items-center space-x-4 rounded-[22px] p-3"
                         >
                           <div className="h-14 w-14 overflow-hidden rounded-xl shadow-sm">
                             <img src={item.thumbnailUrl} alt={`Item ${item.itemNumber}`} className="h-full w-full object-cover" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between">
-                              <p className="text-xs font-black text-slate-900">
+                              <p className="text-xs font-black text-[#2b2b2b]">
                                 Item #{String(item.itemNumber).padStart(2, "0")}
                               </p>
-                              <p className="text-xs font-black text-slate-900">
+                              <p className="text-xs font-black text-[#2b2b2b]">
                                 {formatCurrency(item.resolvedPrice)}
                               </p>
                             </div>
-                            <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
                               {item.batchTitle}
                             </p>
-                            <div className="mt-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            <div className="mt-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
                               <span>{formatClaimWord(item.claimWord)}</span>
                               <span>{formatDateTime(item.claimedAt)}</span>
                             </div>
@@ -237,20 +284,20 @@ export default async function BuyersPage({
                     </div>
                   </div>
 
-                  <div className="space-y-3 border-t border-slate-100 pt-5">
+                  <div className="space-y-3 border-t border-white/45 pt-5">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-slate-500">Subtotal</p>
-                      <p className="text-sm font-black text-slate-900">
+                      <p className="text-sm font-bold text-[#6b6b6b]">Subtotal</p>
+                      <p className="text-sm font-black text-[#2b2b2b]">
                         {formatCurrency(selectedBuyer.totalAmount)}
                       </p>
                     </div>
-                    <Button className="h-12 w-full rounded-xl bg-indigo-600 font-bold shadow-lg shadow-indigo-100">
+                    <Button className="h-12 w-full">
                       <Download className="mr-2 h-4 w-4" />
                       Download Invoice
                     </Button>
                     <Button
                       variant="outline"
-                      className="h-12 w-full rounded-xl border-indigo-100 font-bold text-indigo-600 hover:bg-indigo-50"
+                      className="h-12 w-full"
                     >
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Message Buyer
@@ -258,7 +305,7 @@ export default async function BuyersPage({
                   </div>
                 </>
               ) : (
-                <p className="text-sm font-medium text-slate-500">
+                <p className="text-sm font-medium text-[#6b6b6b]">
                   No buyer selected for this collection.
                 </p>
               )}
