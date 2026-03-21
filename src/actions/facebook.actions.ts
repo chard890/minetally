@@ -6,6 +6,10 @@ import { FacebookPageRepository } from '@/repositories/facebook-page.repository'
 import { MetaPageService } from '@/services/meta/meta-graph.service';
 import { persistFacebookPageConnection } from '@/lib/facebook-connection';
 import { AuditLogRepository } from '@/repositories/audit-log.repository';
+import {
+  clearActiveFacebookPageDbId,
+  setActiveFacebookPageDbId,
+} from '@/lib/active-facebook-page';
 
 export async function finalizeFacebookPageSelectionAction(sessionId: string, pageId: string) {
   const session = await FacebookConnectionSessionRepository.consumeSession(sessionId);
@@ -30,7 +34,13 @@ export async function finalizeFacebookPageSelectionAction(sessionId: string, pag
       userAccessToken: session.userAccessToken,
     });
 
+    const storedPage = await FacebookPageRepository.getPageByMetaPageId(selectedPage.id);
+    if (storedPage) {
+      await setActiveFacebookPageDbId(storedPage.id);
+    }
+
     revalidatePath('/settings');
+    revalidatePath('/');
     revalidatePath('/collections/new');
 
     return { success: true };
@@ -41,10 +51,30 @@ export async function finalizeFacebookPageSelectionAction(sessionId: string, pag
   }
 }
 
-export async function disconnectFacebookPageAction() {
-  const success = await FacebookPageRepository.disconnectPage();
+export async function selectActiveFacebookPageAction(pageId: string) {
+  const selectedPage = await FacebookPageRepository.getPageById(pageId);
+  if (!selectedPage) {
+    return { error: 'That Facebook Page is no longer available.' };
+  }
+
+  await setActiveFacebookPageDbId(pageId);
+  revalidatePath('/');
+  revalidatePath('/settings');
+  revalidatePath('/collections/new');
+
+  return { success: true };
+}
+
+export async function disconnectFacebookPageAction(pageId?: string) {
+  const success = pageId
+    ? await FacebookPageRepository.disconnectPageById(pageId)
+    : await FacebookPageRepository.disconnectPage();
   if (!success) {
     throw new Error('Failed to disconnect Facebook Page.');
+  }
+
+  if (pageId) {
+    await clearActiveFacebookPageDbId();
   }
 
   await AuditLogRepository.log({
@@ -52,11 +82,14 @@ export async function disconnectFacebookPageAction() {
   });
 
   revalidatePath('/settings');
+  revalidatePath('/');
   revalidatePath('/collections/new');
 }
 
-export async function refreshFacebookConnectionAction() {
-  const page = await FacebookPageRepository.getConnectedPage();
+export async function refreshFacebookConnectionAction(pageId?: string) {
+  const page = pageId
+    ? await FacebookPageRepository.getPageById(pageId)
+    : await FacebookPageRepository.getConnectedPage();
   if (!page) {
     return { error: 'No connected Facebook Page found.' };
   }
@@ -72,11 +105,13 @@ export async function refreshFacebookConnectionAction() {
       });
 
       revalidatePath('/settings');
+      revalidatePath('/');
       return { error: 'Facebook rejected the stored Page Access Token. Reconnect your page.' };
     }
 
     await FacebookPageRepository.markSyncSuccess(page.id);
     revalidatePath('/settings');
+    revalidatePath('/');
 
     return { success: true };
   } catch (error) {
@@ -88,6 +123,7 @@ export async function refreshFacebookConnectionAction() {
       lastSyncError: message,
     });
     revalidatePath('/settings');
+    revalidatePath('/');
     return { error: message };
   }
 }

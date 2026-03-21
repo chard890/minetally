@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import Link from 'next/link';
 import { CreateCollectionForm } from '@/components/workflow/CreateCollectionForm';
 import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
+import { getActiveFacebookPageDbId } from '@/lib/active-facebook-page';
 
 export default async function NewCollectionPage() {
   if (!isSupabaseConfigured()) {
@@ -13,6 +14,7 @@ export default async function NewCollectionPage() {
   }
 
   const pages = await FacebookPageRepository.listPages();
+  const activePageId = await getActiveFacebookPageDbId();
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto pb-12">
@@ -43,7 +45,7 @@ export default async function NewCollectionPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-8">
-          <CreateCollectionForm pages={pages} />
+          <CreateCollectionForm pages={pages} activePageId={activePageId} />
         </CardContent>
       </Card>
     </div>

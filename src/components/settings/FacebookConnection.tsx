@@ -19,29 +19,36 @@ import type { PendingFacebookConnectionSession } from '@/repositories/facebook-c
 
 interface FacebookConnectionProps {
   initialPage?: MetaPage | null;
+  activePageId: string | null;
+  availablePages: { id: string; name: string }[];
   pendingConnection: PendingFacebookConnectionSession | null;
   authConfigured: boolean;
   flashError: string | null;
   flashStatus: string | null;
   onSelectPage: (sessionId: string, pageId: string) => Promise<{ success?: boolean; error?: string }>;
   onRefresh: () => Promise<{ success?: boolean; error?: string }>;
+  onSelectActivePage: (pageId: string) => Promise<{ success?: boolean; error?: string }>;
   onDisconnect: () => Promise<void>;
 }
 
 export function FacebookConnection({
   initialPage,
+  activePageId,
+  availablePages,
   pendingConnection,
   authConfigured,
   flashError,
   flashStatus,
   onSelectPage,
   onRefresh,
+  onSelectActivePage,
   onDisconnect,
 }: FacebookConnectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(flashError);
   const [selectedPageId, setSelectedPageId] = useState<string>(pendingConnection?.pages[0]?.id ?? '');
+  const [selectedActivePageId, setSelectedActivePageId] = useState<string>(activePageId ?? '');
 
   const needsReconnect = initialPage?.connection_status === 'needs_reconnect' || initialPage?.reconnect_required;
   const connectedStatusLabel = needsReconnect ? 'Reconnect Required' : 'Connected';
@@ -84,6 +91,25 @@ export function FacebookConnection({
         router.replace('/settings');
         router.refresh();
       }
+    });
+  };
+
+  const handleChooseActivePage = () => {
+    if (!selectedActivePageId) {
+      setError('Choose a Facebook Page for this browser first.');
+      return;
+    }
+
+    setError(null);
+    startTransition(async () => {
+      const result = await onSelectActivePage(selectedActivePageId);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      router.replace('/settings');
+      router.refresh();
     });
   };
 
@@ -186,6 +212,34 @@ export function FacebookConnection({
             <div className="flex justify-end">
               <Button onClick={handleSelectPage} disabled={isPending || !selectedPageId}>
                 {isPending ? 'Saving Page...' : 'Use Selected Page'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!pendingConnection && availablePages.length > 0 && (
+          <div className="space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-5">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">This Browser</p>
+              <h3 className="mt-2 text-lg font-black text-slate-900">Choose the Facebook Page to use on this computer.</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                This choice is stored per browser, so other computers will not automatically inherit it.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <select
+                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 font-medium text-slate-900"
+                value={selectedActivePageId}
+                onChange={(event) => setSelectedActivePageId(event.target.value)}
+              >
+                <option value="">Select a page for this browser...</option>
+                {availablePages.map((page) => (
+                  <option key={page.id} value={page.id}>{page.name}</option>
+                ))}
+              </select>
+              <Button onClick={handleChooseActivePage} disabled={isPending || !selectedActivePageId}>
+                {isPending ? 'Saving...' : 'Use On This Browser'}
               </Button>
             </div>
           </div>

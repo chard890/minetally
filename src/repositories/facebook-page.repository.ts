@@ -103,6 +103,50 @@ export class FacebookPageRepository {
     };
   }
 
+  static async getPageByMetaPageId(metaPageId: string): Promise<{ id: string; page: MetaPage } | null> {
+    const { data, error } = await getServiceSupabase()
+      .from('facebook_pages')
+      .select('*')
+      .eq('meta_page_id', metaPageId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      page: {
+        id: data.meta_page_id,
+        name: data.page_name,
+        access_token: decryptToken(data.page_access_token) ?? '',
+        facebook_user_id: data.facebook_user_id ?? undefined,
+        user_access_token: decryptToken(data.user_access_token) ?? undefined,
+        tasks: data.page_tasks_json ?? undefined,
+        token_status: data.token_status ?? undefined,
+        connection_status: data.connection_status ?? undefined,
+        token_last_validated_at: data.token_last_validated_at ?? undefined,
+        token_type_used_for_sync: data.token_type_used_for_sync ?? undefined,
+        reconnect_required: Boolean(data.reconnect_required),
+        token_expires_at: data.token_expires_at ?? undefined,
+        last_sync_error: data.last_sync_error ?? null,
+      },
+    };
+  }
+
+  static async hasPageRecord(id: string): Promise<boolean> {
+    const { data, error } = await getServiceSupabase()
+      .from('facebook_pages')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking Facebook page record:', error);
+      return false;
+    }
+
+    return Boolean(data);
+  }
+
   static async listPages(): Promise<{ id: string, name: string }[]> {
     let { data, error } = await getServiceSupabase()
       .from('facebook_pages')
@@ -167,6 +211,20 @@ export class FacebookPageRepository {
       console.error('Error disconnecting Facebook page:', error);
       return false;
     }
+    return true;
+  }
+
+  static async disconnectPageById(id: string): Promise<boolean> {
+    const { error } = await getServiceSupabase()
+      .from('facebook_pages')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error disconnecting Facebook page by id:', error);
+      return false;
+    }
+
     return true;
   }
 

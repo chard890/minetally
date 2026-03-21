@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import { settingsService } from "@/services/settings.service";
 import { FacebookPageRepository } from "@/repositories/facebook-page.repository";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { getActiveFacebookPageDbId } from "@/lib/active-facebook-page";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,9 +22,19 @@ export default async function RootLayout({
   const settings = isSupabaseConfigured()
     ? await settingsService.getSettings()
     : null;
-  const connectedPage = isSupabaseConfigured()
-    ? await FacebookPageRepository.getConnectedPage()
+  const activePageId = isSupabaseConfigured()
+    ? await getActiveFacebookPageDbId()
     : null;
+  const connectedPage = isSupabaseConfigured() && activePageId
+    ? await FacebookPageRepository.getPageById(activePageId)
+    : null;
+  const isActivePageExpired = Boolean(
+    connectedPage && (
+      connectedPage.token_status === 'invalid' ||
+      connectedPage.connection_status === 'needs_reconnect' ||
+      connectedPage.reconnect_required
+    ),
+  );
 
   return (
     <html lang="en" className="h-full">
@@ -32,7 +43,7 @@ export default async function RootLayout({
           <Sidebar 
             connectedPageId={connectedPage?.id}
             connectedPageName={connectedPage?.name} 
-            isTokenExpired={settings?.facebookIntegration.isTokenExpired} 
+            isTokenExpired={isActivePageExpired || settings?.facebookIntegration.isTokenExpired} 
           />
           <main className="relative flex-1 overflow-y-auto pl-0 md:pl-2">
             <div className="relative z-10 mx-auto max-w-[1600px] px-5 py-5 sm:px-6 lg:px-8 lg:py-7">

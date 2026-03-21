@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { FacebookConnectionSessionRepository } from "@/repositories/facebook-connection-session.repository";
 import { settingsService } from "@/services/settings.service";
 import { FacebookPageRepository } from "@/repositories/facebook-page.repository";
+import { getActiveFacebookPageDbId } from "@/lib/active-facebook-page";
 
 export default async function SettingsPage({
   searchParams,
@@ -17,7 +18,11 @@ export default async function SettingsPage({
 
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const settings = await settingsService.getSettings();
-  const connectedPage = await FacebookPageRepository.getConnectedPage();
+  const activePageId = await getActiveFacebookPageDbId();
+  const connectedPage = activePageId
+    ? await FacebookPageRepository.getPageById(activePageId)
+    : null;
+  const availablePages = await FacebookPageRepository.listPages();
   const facebookSessionId = typeof resolvedSearchParams.facebook_session === 'string'
     ? resolvedSearchParams.facebook_session
     : undefined;
@@ -44,6 +49,8 @@ export default async function SettingsPage({
       <SettingsForm 
         initialSettings={settings} 
         initialConnectedPage={connectedPage} 
+        activePageId={activePageId}
+        availablePages={availablePages}
         pendingFacebookConnection={pendingConnection}
         facebookAuthConfigured={isFacebookAuthConfigured()}
         facebookError={facebookError}

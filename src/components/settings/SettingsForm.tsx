@@ -18,6 +18,7 @@ import {
   disconnectFacebookPageAction,
   finalizeFacebookPageSelectionAction,
   refreshFacebookConnectionAction,
+  selectActiveFacebookPageAction,
 } from '@/actions/facebook.actions';
 import type { SellerSettings, MetaPage } from '@/types';
 import { FacebookConnection } from './FacebookConnection';
@@ -26,6 +27,8 @@ import type { PendingFacebookConnectionSession } from '@/repositories/facebook-c
 interface SettingsFormProps {
   initialSettings: SellerSettings;
   initialConnectedPage: MetaPage | null;
+  activePageId: string | null;
+  availablePages: { id: string; name: string }[];
   pendingFacebookConnection: PendingFacebookConnectionSession | null;
   facebookAuthConfigured: boolean;
   facebookError: string | null;
@@ -35,6 +38,8 @@ interface SettingsFormProps {
 export function SettingsForm({
   initialSettings,
   initialConnectedPage,
+  activePageId,
+  availablePages,
   pendingFacebookConnection,
   facebookAuthConfigured,
   facebookError,
@@ -86,6 +91,8 @@ export function SettingsForm({
       {/* Facebook Integration (POC) */}
       <FacebookConnection 
         initialPage={initialConnectedPage} 
+        activePageId={activePageId}
+        availablePages={availablePages}
         pendingConnection={pendingFacebookConnection}
         authConfigured={facebookAuthConfigured}
         flashError={facebookError}
@@ -94,10 +101,13 @@ export function SettingsForm({
           return await finalizeFacebookPageSelectionAction(sessionId, pageId);
         }}
         onRefresh={async () => {
-          return await refreshFacebookConnectionAction();
+          return await refreshFacebookConnectionAction(activePageId ?? undefined);
+        }}
+        onSelectActivePage={async (pageId) => {
+          return await selectActiveFacebookPageAction(pageId);
         }}
         onDisconnect={async () => {
-          await disconnectFacebookPageAction();
+          await disconnectFacebookPageAction(activePageId ?? undefined);
         }}
       />
 

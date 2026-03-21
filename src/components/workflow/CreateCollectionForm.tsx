@@ -9,9 +9,10 @@ import { Toast, type ToastType } from "@/components/ui/Toast";
 
 interface CreateCollectionFormProps {
   pages: { id: string; name: string }[];
+  activePageId: string | null;
 }
 
-export function CreateCollectionForm({ pages }: CreateCollectionFormProps) {
+export function CreateCollectionForm({ pages, activePageId }: CreateCollectionFormProps) {
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
@@ -96,7 +97,12 @@ export function CreateCollectionForm({ pages }: CreateCollectionFormProps) {
           <label className="text-xs font-black uppercase tracking-[0.22em] text-[#8b8594]">Connected Facebook Page</label>
           <div className="relative">
             <Facebook className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
-            <select name="pageId" className="h-12 w-full appearance-none bg-transparent pl-12 pr-4 font-bold" required>
+            <select
+              name="pageId"
+              className="h-12 w-full appearance-none bg-transparent pl-12 pr-4 font-bold"
+              defaultValue={activePageId ?? ''}
+              required
+            >
               <option value="">Select a page...</option>
               {pages.map(page => (
                 <option key={page.id} value={page.id}>{page.name}</option>
