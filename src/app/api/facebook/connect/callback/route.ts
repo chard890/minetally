@@ -7,7 +7,10 @@ import {
   isFacebookAuthConfigured,
 } from '@/lib/facebook-auth';
 import { hasPreferredPageTasks, persistFacebookPageConnection } from '@/lib/facebook-connection';
+import { ACTIVE_FACEBOOK_PAGE_COOKIE, KNOWN_FACEBOOK_PAGES_COOKIE } from '@/lib/active-facebook-page';
+import { FACEBOOK_TENANT_COOKIE, getFacebookTenantCookieOptions } from '@/lib/facebook-tenant';
 import { FacebookConnectionSessionRepository } from '@/repositories/facebook-connection-session.repository';
+import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
 import { MetaPageService } from '@/services/meta/meta-graph.service';
 import { inspectMetaAccessToken } from '@/services/meta/meta-token-diagnostics';
 
@@ -69,6 +72,13 @@ export async function GET(request: NextRequest) {
       fetchFacebookUserProfile(exchange.accessToken),
       MetaPageService.getManagedPages(exchange.accessToken),
     ]);
+    const facebookUserId = profile.id?.trim();
+
+    if (!facebookUserId) {
+      return redirectToSettings(url.origin, {
+        facebook_error: 'Facebook did not return a usable account id.',
+      });
+    }
 
     const eligiblePages = managedPages.filter((page) => Boolean(page.access_token?.trim()));
 
@@ -85,20 +95,27 @@ export async function GET(request: NextRequest) {
     if (eligiblePages.length === 1 && hasPreferredPageTasks(eligiblePages[0].tasks)) {
       await persistFacebookPageConnection({
         page: eligiblePages[0],
-        facebookUserId: profile.id,
+        facebookUserId: facebookUserId,
         userAccessToken: exchange.accessToken,
         tokenExpiresAt,
       });
 
+      const storedPage = await FacebookPageRepository.getPageByMetaPageId(eligiblePages[0].id, facebookUserId);
+
       const response = redirectToSettings(url.origin, {
         facebook_status: 'connected',
       });
+      response.cookies.set(FACEBOOK_TENANT_COOKIE, facebookUserId, getFacebookTenantCookieOptions());
+      if (storedPage) {
+        response.cookies.set(KNOWN_FACEBOOK_PAGES_COOKIE, JSON.stringify([storedPage.id]), getFacebookTenantCookieOptions());
+        response.cookies.set(ACTIVE_FACEBOOK_PAGE_COOKIE, storedPage.id, getFacebookTenantCookieOptions());
+      }
       response.cookies.delete(FACEBOOK_OAUTH_STATE_COOKIE);
       return response;
     }
 
     const sessionId = await FacebookConnectionSessionRepository.createSession({
-      facebookUserId: profile.id,
+      facebookUserId: facebookUserId,
       userAccessToken: exchange.accessToken,
       pages: eligiblePages,
       grantedScopes,
@@ -115,6 +132,7 @@ export async function GET(request: NextRequest) {
       facebook_status: 'select_page',
       facebook_session: sessionId,
     });
+    response.cookies.set(FACEBOOK_TENANT_COOKIE, facebookUserId, getFacebookTenantCookieOptions());
     response.cookies.delete(FACEBOOK_OAUTH_STATE_COOKIE);
     return response;
   } catch (error) {

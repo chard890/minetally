@@ -13,6 +13,7 @@ import {
   removeKnownFacebookPageDbId,
   setActiveFacebookPageDbId,
 } from '@/lib/active-facebook-page';
+import { setFacebookTenantId } from '@/lib/facebook-tenant';
 
 export async function finalizeFacebookPageSelectionAction(sessionId: string, pageId: string) {
   const session = await FacebookConnectionSessionRepository.consumeSession(sessionId);
@@ -26,6 +27,10 @@ export async function finalizeFacebookPageSelectionAction(sessionId: string, pag
   }
 
   try {
+    if (session.facebookUserId) {
+      await setFacebookTenantId(session.facebookUserId);
+    }
+
     await persistFacebookPageConnection({
       page: {
         id: selectedPage.id,
@@ -37,7 +42,7 @@ export async function finalizeFacebookPageSelectionAction(sessionId: string, pag
       userAccessToken: session.userAccessToken,
     });
 
-    const storedPage = await FacebookPageRepository.getPageByMetaPageId(selectedPage.id);
+    const storedPage = await FacebookPageRepository.getPageByMetaPageId(selectedPage.id, session.facebookUserId ?? undefined);
     if (storedPage) {
       await addKnownFacebookPageDbId(storedPage.id);
       await setActiveFacebookPageDbId(storedPage.id);

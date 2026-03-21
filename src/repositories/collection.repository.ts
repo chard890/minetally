@@ -1,6 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { getServiceSupabase } from '@/lib/supabase';
 import { getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
+import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
 import { BatchSyncStatus, ClaimWord, CollectionListItem, CollectionStatus, CollectionWorkflowDetail, ItemStatus, PriceReviewStatus } from '@/types';
 
 type CollectionListRow = {
@@ -163,7 +164,16 @@ function deriveItemStatus(item: CollectionDetailItemRow): ItemStatus {
 }
 
 export class CollectionRepository {
+  private static async getOwnedPageIds() {
+    return await FacebookPageRepository.listOwnedPageIds();
+  }
+
   static async listCollections(): Promise<CollectionListItem[]> {
+    const ownedPageIds = await this.getOwnedPageIds();
+    if (ownedPageIds.length === 0) {
+      return [];
+    }
+
     const { data, error } = await getServiceSupabase()
       .from('collections')
       .select(`
@@ -172,6 +182,7 @@ export class CollectionRepository {
           page_name
         )
       `)
+      .in('page_id', ownedPageIds)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -196,10 +207,16 @@ export class CollectionRepository {
   }
 
   static async getCollectionById(id: string) {
+    const ownedPageIds = await this.getOwnedPageIds();
+    if (ownedPageIds.length === 0) {
+      return null;
+    }
+
     const { data, error } = await getServiceSupabase()
       .from('collections')
       .select('*')
       .eq('id', id)
+      .in('page_id', ownedPageIds)
       .maybeSingle();
       
     if (error) return null;
@@ -207,6 +224,11 @@ export class CollectionRepository {
   }
 
   static async getCollectionDetail(id: string): Promise<CollectionWorkflowDetail | null> {
+    const ownedPageIds = await this.getOwnedPageIds();
+    if (ownedPageIds.length === 0) {
+      return null;
+    }
+
     const { data, error } = await getServiceSupabase()
       .from('collections')
       .select(`
@@ -224,6 +246,7 @@ export class CollectionRepository {
         )
       `)
       .eq('id', id)
+      .in('page_id', ownedPageIds)
       .maybeSingle();
 
     if (error) {
@@ -336,6 +359,11 @@ export class CollectionRepository {
   }
 
   static async createCollection(collection: Partial<CollectionWorkflowDetail> & { page_id?: string }): Promise<{ id?: string, error?: string }> {
+    const ownedPageIds = await this.getOwnedPageIds();
+    if (!collection.page_id || !ownedPageIds.includes(collection.page_id)) {
+      return { error: 'You do not have access to that Facebook Page.' };
+    }
+
     const { data, error } = await getServiceSupabase()
       .from('collections')
       .insert({
@@ -357,13 +385,19 @@ export class CollectionRepository {
   }
 
   static async updateCollectionStatus(id: string, status: string, finalizeDate?: string): Promise<boolean> {
+    const ownedPageIds = await this.getOwnedPageIds();
+    if (ownedPageIds.length === 0) {
+      return false;
+    }
+
     const { error } = await getServiceSupabase()
       .from('collections')
       .update({ 
           status,
           finalize_date: finalizeDate || null
       })
-      .eq('id', id);
+      .eq('id', id)
+      .in('page_id', ownedPageIds);
 
     if (error) {
       console.error('Error updating collection status:', error);
@@ -382,6 +416,11 @@ export class CollectionRepository {
     last_synced_at?: string,
     sync_error?: string | null
   }): Promise<boolean> {
+    const ownedPageIds = await this.getOwnedPageIds();
+    if (ownedPageIds.length === 0) {
+      return false;
+    }
+
     const { error } = await getServiceSupabase()
       .from('collections')
       .update({ 
@@ -393,7 +432,8 @@ export class CollectionRepository {
           last_synced_at: metrics.last_synced_at,
           sync_error: metrics.sync_error
       })
-      .eq('id', id);
+      .eq('id', id)
+      .in('page_id', ownedPageIds);
 
     if (error) {
       console.error('Error updating collection metrics:', error);
@@ -405,6 +445,11 @@ export class CollectionRepository {
 
   static async recalculateCollectionMetrics(collectionId: string) {
     const logPath = getSyncDiagnosticsLogPath();
+    const collection = await this.getCollectionById(collectionId);
+    if (!collection) {
+      appendFileSync(logPath, `[RECOUNT] Collection ${collectionId} is not accessible to the current Facebook account.\n`);
+      return false;
+    }
 
     // 1. Count items by status
     const { data: statusCounts, error: statusError } = await getServiceSupabase()
@@ -465,10 +510,16 @@ export class CollectionRepository {
   }
 
   static async deleteCollection(id: string): Promise<boolean> {
+    const ownedPageIds = await this.getOwnedPageIds();
+    if (ownedPageIds.length === 0) {
+      return false;
+    }
+
     const { error } = await getServiceSupabase()
       .from('collections')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .in('page_id', ownedPageIds);
 
     if (error) {
       console.error('Error deleting collection:', error);

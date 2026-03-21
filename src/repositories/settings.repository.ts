@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { getServiceSupabase } from '@/lib/supabase';
+import { getFacebookTenantId } from '@/lib/facebook-tenant';
 import { SellerSettings } from '@/types';
 import { SellerSettingsSchema } from '@/lib/schema';
 
@@ -8,6 +9,8 @@ export class SettingsRepository {
    * For the simulation, we assume there's only one settings row (id: 'global').
    */
   static async getSettings(): Promise<SellerSettings | null> {
+    const supabase = getServiceSupabase();
+
     const { data, error } = await supabase
       .from('settings')
       .select('*')
@@ -22,11 +25,16 @@ export class SettingsRepository {
     if (!data) return null;
 
     // Fetch connected page info if available
-    const { data: pageData } = await supabase
+    let pageQuery = supabase
       .from('facebook_pages')
       .select('page_name, token_expires_at, token_status, connection_status')
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    const facebookTenantId = await getFacebookTenantId();
+    if (facebookTenantId) {
+      pageQuery = pageQuery.eq('facebook_user_id', facebookTenantId);
+    }
+
+    const { data: pageData } = await pageQuery.maybeSingle();
 
     let isTokenExpired = false;
     if (pageData?.token_expires_at) {
@@ -35,7 +43,7 @@ export class SettingsRepository {
     }
 
     // Map DB JSONB fields to SellerSettings object
-    return {
+    const parsed = SellerSettingsSchema.safeParse({
       validClaimKeywords: data.valid_claim_keywords_json,
       cancelKeywords: data.cancel_keywords_json,
       claimCodeMapping: data.claim_code_mapping_json,
@@ -49,12 +57,21 @@ export class SettingsRepository {
         importOnlyCollectionDateRange: true,
         isTokenExpired: isTokenExpired || pageData?.token_status === 'invalid' || pageData?.connection_status === 'needs_reconnect',
       }
-    };
+    });
+
+    if (!parsed.success) {
+      console.error('Error parsing settings row:', parsed.error);
+      return null;
+    }
+
+    return parsed.data as SellerSettings;
   }
 
   static async updateSettings(settings: SellerSettings): Promise<boolean> {
     // Validate with Zod
     SellerSettingsSchema.parse(settings);
+
+    const supabase = getServiceSupabase();
 
     const { error } = await supabase
       .from('settings')

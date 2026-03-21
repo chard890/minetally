@@ -1,5 +1,7 @@
 import { getServiceSupabase } from '@/lib/supabase';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
+import { getActiveFacebookPageDbId } from '@/lib/active-facebook-page';
+import { getFacebookTenantId } from '@/lib/facebook-tenant';
 import { MetaPage } from '@/types';
 
 type FacebookPageRow = {
@@ -33,24 +35,64 @@ export class FacebookPageRepository {
     return error?.code === '42703' && error.message?.includes('reconnect_required');
   }
 
+  private static async getTenantId() {
+    return await getFacebookTenantId();
+  }
+
+  static async listOwnedPageIds() {
+    const tenantId = await this.getTenantId();
+    if (!tenantId) {
+      return [];
+    }
+
+    const { data, error } = await getServiceSupabase()
+      .from('facebook_pages')
+      .select('id')
+      .eq('facebook_user_id', tenantId);
+
+    if (error) {
+      console.error('Error listing owned Facebook page ids:', error);
+      return [];
+    }
+
+    return (data ?? [])
+      .map((row) => row.id)
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+  }
+
   static async getConnectedPage(): Promise<MetaPage | null> {
-    let { data, error } = await getServiceSupabase()
+    const tenantId = await this.getTenantId();
+    if (!tenantId) {
+      return null;
+    }
+
+    const activePageId = await getActiveFacebookPageDbId();
+    if (activePageId) {
+      const activePage = await this.getPageById(activePageId);
+      if (activePage) {
+        return activePage;
+      }
+    }
+
+    let query = getServiceSupabase()
       .from('facebook_pages')
       .select('*')
+      .eq('facebook_user_id', tenantId)
       .eq('connection_status', 'active')
       .eq('reconnect_required', false)
       .order('connected_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    let { data, error } = await query.maybeSingle();
 
     if (this.isMissingReconnectRequiredColumn(error)) {
-      ({ data, error } = await getServiceSupabase()
+      query = getServiceSupabase()
         .from('facebook_pages')
         .select('*')
+        .eq('facebook_user_id', tenantId)
         .eq('connection_status', 'active')
         .order('connected_at', { ascending: false })
-        .limit(1)
-        .maybeSingle());
+        .limit(1);
+      ({ data, error } = await query.maybeSingle());
     }
 
     if (error) {
@@ -78,11 +120,16 @@ export class FacebookPageRepository {
   }
 
   static async getPageById(id: string): Promise<MetaPage | null> {
-    const { data, error } = await getServiceSupabase()
+    let query = getServiceSupabase()
       .from('facebook_pages')
       .select('*')
-      .eq('id', id)
-      .maybeSingle();
+      .eq('id', id);
+    const tenantId = await this.getTenantId();
+    if (tenantId) {
+      query = query.eq('facebook_user_id', tenantId);
+    }
+
+    const { data, error } = await query.maybeSingle();
 
     if (error || !data) return null;
 
@@ -103,12 +150,17 @@ export class FacebookPageRepository {
     };
   }
 
-  static async getPageByMetaPageId(metaPageId: string): Promise<{ id: string; page: MetaPage } | null> {
-    const { data, error } = await getServiceSupabase()
+  static async getPageByMetaPageId(metaPageId: string, facebookUserId?: string): Promise<{ id: string; page: MetaPage } | null> {
+    let query = getServiceSupabase()
       .from('facebook_pages')
       .select('*')
-      .eq('meta_page_id', metaPageId)
-      .maybeSingle();
+      .eq('meta_page_id', metaPageId);
+    const tenantId = facebookUserId ?? await this.getTenantId();
+    if (tenantId) {
+      query = query.eq('facebook_user_id', tenantId);
+    }
+
+    const { data, error } = await query.maybeSingle();
 
     if (error || !data) return null;
 
@@ -148,19 +200,28 @@ export class FacebookPageRepository {
   }
 
   static async listPages(): Promise<{ id: string, name: string }[]> {
-    let { data, error } = await getServiceSupabase()
+    const tenantId = await this.getTenantId();
+    if (!tenantId) {
+      return [];
+    }
+
+    let query = getServiceSupabase()
       .from('facebook_pages')
       .select('id, page_name')
+      .eq('facebook_user_id', tenantId)
       .eq('connection_status', 'active')
       .eq('reconnect_required', false)
       .order('page_name');
+    let { data, error } = await query;
 
     if (this.isMissingReconnectRequiredColumn(error)) {
-      ({ data, error } = await getServiceSupabase()
+      query = getServiceSupabase()
         .from('facebook_pages')
         .select('id, page_name')
+        .eq('facebook_user_id', tenantId)
         .eq('connection_status', 'active')
-        .order('page_name'));
+        .order('page_name');
+      ({ data, error } = await query);
     }
 
     if (error) {
@@ -179,21 +240,30 @@ export class FacebookPageRepository {
       return [];
     }
 
-    let { data, error } = await getServiceSupabase()
+    const tenantId = await this.getTenantId();
+    if (!tenantId) {
+      return [];
+    }
+
+    let query = getServiceSupabase()
       .from('facebook_pages')
       .select('id, page_name')
       .in('id', ids)
+      .eq('facebook_user_id', tenantId)
       .eq('connection_status', 'active')
       .eq('reconnect_required', false)
       .order('page_name');
+    let { data, error } = await query;
 
     if (this.isMissingReconnectRequiredColumn(error)) {
-      ({ data, error } = await getServiceSupabase()
+      query = getServiceSupabase()
         .from('facebook_pages')
         .select('id, page_name')
         .in('id', ids)
+        .eq('facebook_user_id', tenantId)
         .eq('connection_status', 'active')
-        .order('page_name'));
+        .order('page_name');
+      ({ data, error } = await query);
     }
 
     if (error) {
@@ -235,10 +305,15 @@ export class FacebookPageRepository {
   }
 
   static async disconnectPage(): Promise<boolean> {
+    const tenantId = await this.getTenantId();
+    if (!tenantId) {
+      return false;
+    }
+
     const { error } = await getServiceSupabase()
       .from('facebook_pages')
       .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+      .eq('facebook_user_id', tenantId);
 
     if (error) {
       console.error('Error disconnecting Facebook page:', error);
@@ -248,10 +323,16 @@ export class FacebookPageRepository {
   }
 
   static async disconnectPageById(id: string): Promise<boolean> {
-    const { error } = await getServiceSupabase()
+    let query = getServiceSupabase()
       .from('facebook_pages')
       .delete()
       .eq('id', id);
+    const tenantId = await this.getTenantId();
+    if (tenantId) {
+      query = query.eq('facebook_user_id', tenantId);
+    }
+
+    const { error } = await query;
 
     if (error) {
       console.error('Error disconnecting Facebook page by id:', error);
@@ -267,7 +348,7 @@ export class FacebookPageRepository {
     connectionStatus: string;
     lastSyncError?: string | null;
   }): Promise<boolean> {
-    const { error } = await getServiceSupabase()
+    let query = getServiceSupabase()
       .from('facebook_pages')
       .update({
         token_status: params.tokenStatus,
@@ -277,6 +358,12 @@ export class FacebookPageRepository {
         token_last_validated_at: new Date().toISOString(),
       })
       .eq('meta_page_id', params.pageId);
+    const tenantId = await this.getTenantId();
+    if (tenantId) {
+      query = query.eq('facebook_user_id', tenantId);
+    }
+
+    const { error } = await query;
 
     if (error) {
       console.error('Error updating Facebook page token status:', error);
