@@ -111,21 +111,21 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 sm:space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between xl:flex-1">
           <div>
-            <h1 className="text-[30px] font-semibold tracking-tight text-slate-900">Seller Dashboard</h1>
-            <p className="mt-0.5 text-sm leading-6 text-slate-500">
+            <h1 className="text-[20px] font-semibold tracking-tight text-slate-900 sm:text-[30px]">Seller Dashboard</h1>
+            <p className="mt-0.5 text-[12px] leading-5 text-slate-500 sm:text-sm sm:leading-6">
               Photo-based claim reconciliation for your Facebook ukay workflow.
             </p>
           </div>
-          <div className="relative w-full max-w-[360px]">
+          <div className="relative w-full max-w-none sm:max-w-[360px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8b8594]" />
             <input
               type="text"
               placeholder="Search buyers, batches, or items"
-              className="h-11 w-full pl-10 pr-4 text-sm font-medium"
+              className="h-10 w-full min-w-0 pl-10 pr-3 text-[13px] font-medium sm:h-11 sm:pr-4 sm:text-sm"
             />
           </div>
         </div>
@@ -133,7 +133,7 @@ export default async function DashboardPage() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.95fr)]">
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 2xl:grid-cols-4">
             <MetricCard
               label="Active Collections"
               value={dashboard.activeCollections}
@@ -165,55 +165,60 @@ export default async function DashboardPage() {
           </div>
 
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader className="border-b border-slate-50 px-5 py-4">
+            <CardHeader className="border-b border-slate-50 px-4 py-4 sm:px-5">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base font-semibold">Recent Winning Claims</CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-4">
+            <CardContent className="p-4 pt-4 sm:p-5 sm:pt-4">
               {dashboard.recentWinningClaims.length > 0 ? (
                 <div className="space-y-3">
                   {dashboard.recentWinningClaims.map((claim: RecentWinningClaim) => (
                     <Link
                       key={claim.itemId}
                       href={`/collections/${claim.collectionId}/items/${claim.itemId}`}
-                      className="group flex items-center gap-3 rounded-2xl border border-transparent px-1 py-1.5 hover:border-slate-100"
+                      className="group flex min-w-0 flex-col gap-3 rounded-2xl border border-transparent px-1 py-1.5 hover:border-slate-100 sm:flex-row sm:items-center sm:gap-3"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[rgba(255,142,110,0.14)] text-[11px] font-bold text-[#7a62b7] ring-1 ring-white/50">
-                          {getInitials(claim.buyerName)}
+                      <div className="flex min-w-0 items-start justify-between gap-3 sm:flex-1 sm:items-center">
+                        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[rgba(255,142,110,0.14)] text-[10px] font-bold text-[#7a62b7] ring-1 ring-white/50 sm:h-9 sm:w-9 sm:text-[11px]">
+                            {getInitials(claim.buyerName)}
+                          </div>
+                          <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl ring-1 ring-slate-200 sm:h-9 sm:w-9">
+                            <img
+                              src={claim.thumbnailUrl}
+                              alt={`Item ${claim.itemNumber}`}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="block truncate text-sm font-semibold leading-none text-slate-900 group-hover:text-indigo-600">
+                                {claim.buyerName}
+                              </span>
+                              <StatusBadge
+                                label={formatClaimWord(claim.claimWord)}
+                                variant="emerald"
+                                className="px-2 py-0.5 text-[10px]"
+                              />
+                            </div>
+                            <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                              Item #{String(claim.itemNumber).padStart(2, "0")} from {claim.batchTitle}
+                            </p>
+                          </div>
                         </div>
-                        <div className="h-9 w-9 overflow-hidden rounded-xl ring-1 ring-slate-200">
-                          <img
-                            src={claim.thumbnailUrl}
-                            alt={`Item ${claim.itemNumber}`}
-                            className="h-full w-full object-cover"
-                          />
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-semibold leading-none text-slate-900">
+                            {formatCurrency(claim.resolvedPrice)}
+                          </p>
+                          <p className="mt-1 hidden text-[10px] font-semibold uppercase tracking-[0.2em] leading-none text-slate-400 sm:block">
+                            {formatDateTime(claim.claimedAt)}
+                          </p>
                         </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-semibold leading-none text-slate-900 group-hover:text-indigo-600">
-                            {claim.buyerName}
-                          </span>
-                          <StatusBadge
-                            label={formatClaimWord(claim.claimWord)}
-                            variant="emerald"
-                            className="px-2 py-0.5 text-[10px]"
-                          />
-                        </div>
-                        <p className="mt-1 text-[11px] leading-4 text-slate-500">
-                          Item #{String(claim.itemNumber).padStart(2, "0")} from {claim.batchTitle}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold leading-none text-slate-900">
-                          {formatCurrency(claim.resolvedPrice)}
-                        </p>
-                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] leading-none text-slate-400">
-                          {formatDateTime(claim.claimedAt)}
-                        </p>
-                      </div>
+                      <p className="pl-10 text-[10px] font-semibold uppercase tracking-[0.16em] leading-none text-slate-400 sm:hidden">
+                        {formatDateTime(claim.claimedAt)}
+                      </p>
                     </Link>
                   ))}
                 </div>
@@ -226,15 +231,15 @@ export default async function DashboardPage() {
           </Card>
 
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader className="border-b border-slate-50 px-5 py-4">
-              <div className="flex items-center justify-between">
+            <CardHeader className="border-b border-slate-50 px-4 py-4 sm:px-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base font-semibold">Active Collection Overview</CardTitle>
                 <StatusBadge label="Live Now" variant="emerald" />
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-4">
+            <CardContent className="p-4 pt-4 sm:p-5 sm:pt-4">
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4">
-                <div className="mb-4 flex items-center justify-between gap-4">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <h3 className="truncate text-lg font-semibold leading-tight text-slate-900">
                       {activeCollection.name}
@@ -248,13 +253,13 @@ export default async function DashboardPage() {
                     </p>
                   </div>
                   <Link href={`/collections/${activeCollection.id}`}>
-                    <Button variant="secondary" size="sm">
+                    <Button variant="secondary" size="sm" className="w-full sm:w-auto">
                       Open Collection
                     </Button>
                   </Link>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
                   <div className="rounded-xl border border-slate-100 bg-white px-3.5 py-3 shadow-sm">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Item Photos
@@ -295,17 +300,17 @@ export default async function DashboardPage() {
 
         <div className="space-y-4">
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader className="border-b border-slate-50 px-5 py-4">
-              <div className="flex items-center justify-between">
+            <CardHeader className="border-b border-slate-50 px-4 py-4 sm:px-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base font-semibold">Buyer Totals</CardTitle>
                 <Link href={`/buyers?collectionId=${activeCollection.id}`}>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" className="w-full sm:w-auto">
                     View Buyer Totals
                   </Button>
                 </Link>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-4">
+            <CardContent className="p-4 pt-4 sm:p-5 sm:pt-4">
               {topBuyers.length > 0 ? (
                 <>
                   <div className="space-y-3">
@@ -357,12 +362,12 @@ export default async function DashboardPage() {
           </Card>
 
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader className="px-5 py-4">
+            <CardHeader className="px-4 py-4 sm:px-5">
               <CardTitle className="text-sm font-semibold uppercase tracking-[0.2em] leading-none text-slate-400">
                 Live Collection Status
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 p-5 pt-0">
+            <CardContent className="space-y-3 p-4 pt-0 sm:p-5 sm:pt-0">
               {liveStatusRows.length > 0 ? (
                 liveStatusRows.map((batch) => (
                   <div key={batch.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100/70 bg-white/40 px-3.5 py-3">
@@ -393,7 +398,7 @@ export default async function DashboardPage() {
           </Card>
 
           <Card className="border-0 shadow-sm ring-1 ring-slate-100">
-            <CardHeader className="px-5 py-4">
+            <CardHeader className="px-4 py-4 sm:px-5">
               <div className="flex items-center gap-2">
                 <Wrench className="h-4 w-4 text-[#7a62b7]" />
                 <CardTitle className="text-sm font-semibold uppercase tracking-[0.2em] leading-none text-slate-400">
@@ -401,7 +406,7 @@ export default async function DashboardPage() {
                 </CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="grid gap-3 p-5 pt-0">
+            <CardContent className="grid gap-3 p-4 pt-0 sm:p-5 sm:pt-0">
               <div className="rounded-2xl border border-slate-100/70 bg-white/40 px-3.5 py-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Pending Issues

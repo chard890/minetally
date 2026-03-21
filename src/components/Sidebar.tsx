@@ -90,111 +90,167 @@ export default function Sidebar({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+  const mobileNavItems = navItems.filter((item) => !item.disabled).slice(0, 4);
 
   return (
-    <aside className="relative hidden h-screen w-[220px] shrink-0 overflow-visible p-4 pb-5 lg:block">
-      <div className="flex h-full flex-col items-center overflow-visible py-2">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[linear-gradient(145deg,#312741,#4b3a68)] text-white shadow-[0_14px_28px_rgba(47,39,64,0.22)]">
-            <Package className="h-6 w-6" />
-          </div>
-          <div className="flex min-w-0 flex-col text-left">
-            <p className="text-[10px] font-semibold leading-none tracking-[0.04em] text-[#4b4656]">
-              MineTally
-            </p>
-            <p className="mt-1 text-[10px] font-bold leading-none text-[#2b2b2b]">
-              Console
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 w-full px-1">
-          <div className="overflow-hidden rounded-[26px] border border-white/55 bg-[rgba(255,255,255,0.5)] p-3 backdrop-blur-[14px] shadow-[0_14px_30px_rgba(110,91,140,0.14),inset_0_1px_0_rgba(255,255,255,0.4)]">
-            <div className="relative h-[132px] overflow-hidden rounded-[20px] bg-[linear-gradient(135deg,rgba(255,142,110,0.16),rgba(183,156,245,0.22))]">
-              {hasConnectedPage && connectedPageImageUrl && !pageImageError ? (
-                <img
-                  src={connectedPageImageUrl}
-                  alt={connectedPageName}
-                  className="h-full w-full object-cover"
-                  onError={() => setPageImageError(true)}
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(145deg,#f4d7ce,#ecdff5)] text-xl font-black text-[#6a5d80]">
-                  {hasConnectedPage ? (pageInitials || 'FB') : 'FB'}
-                </div>
-              )}
-              <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,transparent,rgba(255,247,241,0.9))]" />
-              <div className="absolute inset-x-3 bottom-3 rounded-[18px] border border-white/60 bg-[rgba(255,255,255,0.62)] px-3 py-2 backdrop-blur-[14px] shadow-[0_10px_24px_rgba(110,91,140,0.12)]">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={cn(
-                      'h-2.5 w-2.5 shrink-0 rounded-full',
-                      !hasConnectedPage
-                        ? 'bg-[#d9d0e8]'
-                        : isTokenExpired
-                          ? 'bg-[#ffb35c] animate-pulse'
-                          : 'bg-[#8ecfb5]',
-                    )}
-                  />
-                  <p className="truncate text-[12px] font-bold leading-none text-[#2b2b2b]">
-                    {hasConnectedPage ? connectedPageName : 'No Facebook Page'}
-                  </p>
-                  {!hasConnectedPage ? (
-                    <Facebook className="ml-auto h-3.5 w-3.5 shrink-0 text-[#b8afc8]" />
-                  ) : isTokenExpired ? (
-                    <AlertCircle className="ml-auto h-3.5 w-3.5 shrink-0 text-[#d48f30]" />
-                  ) : (
-                    <Facebook className="ml-auto h-3.5 w-3.5 shrink-0 text-[#7a62b7]" />
-                  )}
-                </div>
-                <p className="mt-1 text-[10px] font-medium leading-none text-[#6b6b6b]">
-                  {!hasConnectedPage
-                    ? 'Connect a page in Settings'
-                    : isTokenExpired
-                      ? 'Reconnect required'
-                      : 'Connected Facebook page'}
-                </p>
-              </div>
+    <>
+      <div className="fixed inset-x-0 top-0 z-40 border-b border-white/40 bg-[rgba(255,247,241,0.86)] px-2.5 py-2 backdrop-blur-[18px] lg:hidden">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[15px] bg-[linear-gradient(145deg,#312741,#4b3a68)] text-white shadow-[0_10px_20px_rgba(47,39,64,0.2)]">
+              <Package className="h-4.5 w-4.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[8px] font-semibold leading-none tracking-[0.04em] text-[#4b4656]">
+                MineTally
+              </p>
+              <p className="mt-0.5 truncate text-[12px] font-bold text-[#2b2b2b]">
+                {hasConnectedPage ? connectedPageName : 'No Facebook Page'}
+              </p>
             </div>
           </div>
-        </div>
-
-        <div className="mt-7 flex flex-1 flex-col items-center justify-between overflow-visible">
-          <div className="w-full space-y-4 overflow-visible">
-            <div className="group/nav w-[60px] overflow-hidden rounded-[28px] border border-white/55 bg-[rgba(255,255,255,0.52)] px-3 py-3 backdrop-blur-[14px] shadow-[0_16px_32px_rgba(110,91,140,0.14),inset_0_1px_0_rgba(255,255,255,0.4)] transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:w-[196px]">
-              <nav className="space-y-2">
-                {primaryNavItems.map((item) => (
-                  <NavIconButton
-                    key={item.name}
-                    item={item}
-                    isActive={item.href ? pathname.startsWith(item.href) : false}
-                  />
-                ))}
-              </nav>
-            </div>
-
-            <div className="group/nav w-[60px] overflow-hidden rounded-[28px] border border-white/55 bg-[rgba(255,255,255,0.52)] px-3 py-3 backdrop-blur-[14px] shadow-[0_16px_32px_rgba(110,91,140,0.14),inset_0_1px_0_rgba(255,255,255,0.4)] transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:w-[196px]">
-              <nav className="space-y-2">
-                {secondaryNavItems.map((item) => (
-                  <NavIconButton
-                    key={item.name}
-                    item={item}
-                    isActive={item.href ? pathname.startsWith(item.href) : false}
-                  />
-                ))}
-              </nav>
-            </div>
-          </div>
-
-          <div className="mt-4 flex w-full justify-center">
-            <button
-              className="group relative flex h-12 w-[60px] items-center justify-center rounded-[22px] border border-white/50 bg-[rgba(255,255,255,0.42)] text-[#6d6a77] shadow-[0_12px_24px_rgba(110,91,140,0.12)] backdrop-blur-[10px] hover:bg-[rgba(255,255,255,0.58)] hover:text-[#ef7e7e]"
-            >
-              <LogOut className="h-[18px] w-[18px]" />
-            </button>
+          <div className="flex shrink-0 items-center gap-1 rounded-full border border-white/60 bg-white/55 px-2 py-1 text-[#6d6a77] shadow-[0_10px_22px_rgba(110,91,140,0.12)]">
+            {hasConnectedPage ? (
+              isTokenExpired ? <AlertCircle className="h-3 w-3 text-[#d48f30]" /> : <Facebook className="h-3 w-3 text-[#7a62b7]" />
+            ) : (
+              <Facebook className="h-3 w-3 text-[#b8afc8]" />
+            )}
+            <span className="text-[8px] font-bold uppercase tracking-[0.1em]">
+              {hasConnectedPage ? (isTokenExpired ? 'Reconnect' : 'Connected') : 'Disconnected'}
+            </span>
           </div>
         </div>
       </div>
-    </aside>
+
+      <aside className="relative hidden h-screen w-[220px] shrink-0 overflow-visible p-4 pb-5 lg:block">
+        <div className="flex h-full flex-col items-center overflow-visible py-2">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[linear-gradient(145deg,#312741,#4b3a68)] text-white shadow-[0_14px_28px_rgba(47,39,64,0.22)]">
+              <Package className="h-6 w-6" />
+            </div>
+            <div className="flex min-w-0 flex-col text-left">
+              <p className="text-[10px] font-semibold leading-none tracking-[0.04em] text-[#4b4656]">
+                MineTally
+              </p>
+              <p className="mt-1 text-[10px] font-bold leading-none text-[#2b2b2b]">
+                Console
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 w-full px-1">
+            <div className="overflow-hidden rounded-[26px] border border-white/55 bg-[rgba(255,255,255,0.5)] p-3 backdrop-blur-[14px] shadow-[0_14px_30px_rgba(110,91,140,0.14),inset_0_1px_0_rgba(255,255,255,0.4)]">
+              <div className="relative h-[132px] overflow-hidden rounded-[20px] bg-[linear-gradient(135deg,rgba(255,142,110,0.16),rgba(183,156,245,0.22))]">
+                {hasConnectedPage && connectedPageImageUrl && !pageImageError ? (
+                  <img
+                    src={connectedPageImageUrl}
+                    alt={connectedPageName}
+                    className="h-full w-full object-cover"
+                    onError={() => setPageImageError(true)}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(145deg,#f4d7ce,#ecdff5)] text-xl font-black text-[#6a5d80]">
+                    {hasConnectedPage ? (pageInitials || 'FB') : 'FB'}
+                  </div>
+                )}
+                <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,transparent,rgba(255,247,241,0.9))]" />
+                <div className="absolute inset-x-3 bottom-3 rounded-[18px] border border-white/60 bg-[rgba(255,255,255,0.62)] px-3 py-2 backdrop-blur-[14px] shadow-[0_10px_24px_rgba(110,91,140,0.12)]">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={cn(
+                        'h-2.5 w-2.5 shrink-0 rounded-full',
+                        !hasConnectedPage
+                          ? 'bg-[#d9d0e8]'
+                          : isTokenExpired
+                            ? 'bg-[#ffb35c] animate-pulse'
+                            : 'bg-[#8ecfb5]',
+                      )}
+                    />
+                    <p className="truncate text-[12px] font-bold leading-none text-[#2b2b2b]">
+                      {hasConnectedPage ? connectedPageName : 'No Facebook Page'}
+                    </p>
+                    {!hasConnectedPage ? (
+                      <Facebook className="ml-auto h-3.5 w-3.5 shrink-0 text-[#b8afc8]" />
+                    ) : isTokenExpired ? (
+                      <AlertCircle className="ml-auto h-3.5 w-3.5 shrink-0 text-[#d48f30]" />
+                    ) : (
+                      <Facebook className="ml-auto h-3.5 w-3.5 shrink-0 text-[#7a62b7]" />
+                    )}
+                  </div>
+                  <p className="mt-1 text-[10px] font-medium leading-none text-[#6b6b6b]">
+                    {!hasConnectedPage
+                      ? 'Connect a page in Settings'
+                      : isTokenExpired
+                        ? 'Reconnect required'
+                        : 'Connected Facebook page'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-7 flex flex-1 flex-col items-center justify-between overflow-visible">
+            <div className="w-full space-y-4 overflow-visible">
+              <div className="group/nav w-[60px] overflow-hidden rounded-[28px] border border-white/55 bg-[rgba(255,255,255,0.52)] px-3 py-3 backdrop-blur-[14px] shadow-[0_16px_32px_rgba(110,91,140,0.14),inset_0_1px_0_rgba(255,255,255,0.4)] transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:w-[196px]">
+                <nav className="space-y-2">
+                  {primaryNavItems.map((item) => (
+                    <NavIconButton
+                      key={item.name}
+                      item={item}
+                      isActive={item.href ? pathname.startsWith(item.href) : false}
+                    />
+                  ))}
+                </nav>
+              </div>
+
+              <div className="group/nav w-[60px] overflow-hidden rounded-[28px] border border-white/55 bg-[rgba(255,255,255,0.52)] px-3 py-3 backdrop-blur-[14px] shadow-[0_16px_32px_rgba(110,91,140,0.14),inset_0_1px_0_rgba(255,255,255,0.4)] transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:w-[196px]">
+                <nav className="space-y-2">
+                  {secondaryNavItems.map((item) => (
+                    <NavIconButton
+                      key={item.name}
+                      item={item}
+                      isActive={item.href ? pathname.startsWith(item.href) : false}
+                    />
+                  ))}
+                </nav>
+              </div>
+            </div>
+
+            <div className="mt-4 flex w-full justify-center">
+              <button
+                className="group relative flex h-12 w-[60px] items-center justify-center rounded-[22px] border border-white/50 bg-[rgba(255,255,255,0.42)] text-[#6d6a77] shadow-[0_12px_24px_rgba(110,91,140,0.12)] backdrop-blur-[10px] hover:bg-[rgba(255,255,255,0.58)] hover:text-[#ef7e7e]"
+              >
+                <LogOut className="h-[18px] w-[18px]" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:hidden">
+        <nav className="pointer-events-auto mx-auto max-w-md rounded-[28px] border border-white/60 bg-[rgba(255,255,255,0.78)] p-2 shadow-[0_18px_40px_rgba(110,91,140,0.2)] backdrop-blur-[18px]">
+          <div className="grid grid-cols-4 gap-1">
+            {mobileNavItems.map((item) => {
+              const isActive = item.href ? pathname.startsWith(item.href) : false;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'flex min-w-0 flex-col items-center gap-1 rounded-[20px] px-2 py-2 text-center transition-colors',
+                    isActive
+                      ? 'bg-[rgba(255,142,110,0.18)] text-[#ff8e6e]'
+                      : 'text-[#877e98] hover:bg-white/50 hover:text-[#7a62b7]',
+                  )}
+                >
+                  <item.icon className="h-[18px] w-[18px] shrink-0" />
+                  <span className="truncate text-[10px] font-bold leading-none">{item.name}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      </div>
+    </>
   );
 }

@@ -174,6 +174,39 @@ export class FacebookPageRepository {
     }));
   }
 
+  static async listPagesByIds(ids: string[]): Promise<{ id: string, name: string }[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    let { data, error } = await getServiceSupabase()
+      .from('facebook_pages')
+      .select('id, page_name')
+      .in('id', ids)
+      .eq('connection_status', 'active')
+      .eq('reconnect_required', false)
+      .order('page_name');
+
+    if (this.isMissingReconnectRequiredColumn(error)) {
+      ({ data, error } = await getServiceSupabase()
+        .from('facebook_pages')
+        .select('id, page_name')
+        .in('id', ids)
+        .eq('connection_status', 'active')
+        .order('page_name'));
+    }
+
+    if (error) {
+      console.error('Error listing Facebook pages by ids:', error);
+      return [];
+    }
+
+    return ((data || []) as FacebookPageRow[]).map((page) => ({
+      id: page.id,
+      name: page.page_name,
+    }));
+  }
+
   static async upsertPage(page: UpsertFacebookPageInput, expiresAt?: string): Promise<boolean> {
     const { error } = await getServiceSupabase()
       .from('facebook_pages')

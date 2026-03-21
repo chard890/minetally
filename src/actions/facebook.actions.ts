@@ -7,7 +7,10 @@ import { MetaPageService } from '@/services/meta/meta-graph.service';
 import { persistFacebookPageConnection } from '@/lib/facebook-connection';
 import { AuditLogRepository } from '@/repositories/audit-log.repository';
 import {
+  addKnownFacebookPageDbId,
   clearActiveFacebookPageDbId,
+  getKnownFacebookPageDbIds,
+  removeKnownFacebookPageDbId,
   setActiveFacebookPageDbId,
 } from '@/lib/active-facebook-page';
 
@@ -36,6 +39,7 @@ export async function finalizeFacebookPageSelectionAction(sessionId: string, pag
 
     const storedPage = await FacebookPageRepository.getPageByMetaPageId(selectedPage.id);
     if (storedPage) {
+      await addKnownFacebookPageDbId(storedPage.id);
       await setActiveFacebookPageDbId(storedPage.id);
     }
 
@@ -52,6 +56,11 @@ export async function finalizeFacebookPageSelectionAction(sessionId: string, pag
 }
 
 export async function selectActiveFacebookPageAction(pageId: string) {
+  const knownPageIds = await getKnownFacebookPageDbIds();
+  if (!knownPageIds.includes(pageId)) {
+    return { error: 'That Facebook Page is not available in this browser.' };
+  }
+
   const selectedPage = await FacebookPageRepository.getPageById(pageId);
   if (!selectedPage) {
     return { error: 'That Facebook Page is no longer available.' };
@@ -74,6 +83,7 @@ export async function disconnectFacebookPageAction(pageId?: string) {
   }
 
   if (pageId) {
+    await removeKnownFacebookPageDbId(pageId);
     await clearActiveFacebookPageDbId();
   }
 

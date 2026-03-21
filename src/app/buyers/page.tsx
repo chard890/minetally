@@ -95,28 +95,28 @@ export default async function BuyersPage({
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 sm:space-y-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#8b8594]">Core Ledger</p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-[#2b2b2b]">Buyer Totals</h1>
-          <p className="mt-2 text-[#6b6b6b]">
+          <h1 className="mt-2 text-[30px] font-bold tracking-tight text-[#2b2b2b] sm:text-4xl">Buyer Totals</h1>
+          <p className="mt-2 text-[13px] text-[#6b6b6b] sm:text-base">
             Verify buyer totals with thumbnails before sending invoices.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Button variant="outline">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
+          <Button variant="outline" className="w-full sm:w-auto">
             <Printer className="mr-2 h-4 w-4" />
             Print All
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" className="w-full sm:w-auto">
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:gap-3 sm:overflow-visible">
         {collections.map((collection) => (
           <Link
             key={collection.id}
@@ -124,7 +124,7 @@ export default async function BuyersPage({
               collectionId: collection.id,
               buyerId: undefined,
             })}
-            className={`rounded-[18px] border px-4 py-2.5 text-sm font-semibold transition-all ${
+            className={`shrink-0 rounded-[16px] border px-3 py-2 text-[13px] font-semibold transition-all sm:rounded-[18px] sm:px-4 sm:py-2.5 sm:text-sm ${
               collection.id === selectedCollectionId
                 ? "border-white/60 bg-white/82 text-[#2b2b2b] shadow-[0_12px_24px_rgba(110,91,140,0.1)]"
                 : "border-white/50 bg-white/38 text-[#6b6b6b] hover:bg-white/58"
@@ -135,14 +135,14 @@ export default async function BuyersPage({
         ))}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid gap-4 sm:gap-8 lg:grid-cols-3">
+        <div className="space-y-4 sm:space-y-6 lg:col-span-2">
           <Card className="overflow-hidden border-0">
             <CardContent className="p-0">
-                <div className="flex items-center gap-4 border-b border-white/45 p-6">
+                <div className="flex flex-col gap-3 border-b border-white/45 p-4 sm:p-6">
                   <BuyerSearchInput initialValue={query} />
-                  <div className="flex items-center gap-2">
-                    <span className="mr-2 text-xs font-black uppercase tracking-[0.22em] text-[#8b8594]">Sort:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="mr-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#8b8594] sm:mr-2 sm:text-xs sm:tracking-[0.22em]">Sort:</span>
                     <Link href={buildBuyersHref({ sortBy: "name", sortOrder: sortBy === "name" && sortOrder === "asc" ? "desc" : "asc", buyerId: undefined })}>
                        <Button variant={sortBy === 'name' ? 'primary' : 'outline'} size="sm" className="h-9">Name</Button>
                     </Link>
@@ -153,7 +153,7 @@ export default async function BuyersPage({
                        <Button variant={sortBy === 'amount' ? 'primary' : 'outline'} size="sm" className="h-9">Amount</Button>
                     </Link>
                   </div>
-                  <div className="rounded-[18px] bg-white/45 px-4 py-2.5 text-sm font-bold text-[#6b6b6b]">
+                  <div className="rounded-[16px] bg-white/45 px-3 py-2 text-[13px] font-bold text-[#6b6b6b] sm:rounded-[18px] sm:px-4 sm:py-2.5 sm:text-sm">
                     {buyers.length} buyers
                   </div>
                 </div>
@@ -166,14 +166,14 @@ export default async function BuyersPage({
                       collectionId: buyer.collectionId,
                       buyerId: buyer.buyerId,
                     })}
-                    className="group flex items-center justify-between p-6 transition-all hover:bg-white/28"
+                    className="group flex flex-col gap-3 p-4 transition-all hover:bg-white/28 sm:p-6"
                   >
-                    <div className="flex items-center space-x-4">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/55 bg-white/65 text-sm font-bold text-[#7a62b7]">
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/55 bg-white/65 text-sm font-bold text-[#7a62b7] sm:h-11 sm:w-11">
                         {buyer.buyerName.charAt(0)}
                       </div>
-                      <div>
-                        <h3 className="font-bold text-[#2b2b2b] transition-colors group-hover:text-[#7a62b7]">
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-[#2b2b2b] transition-colors group-hover:text-[#7a62b7] sm:text-xl">
                           {buyer.buyerName}
                         </h3>
                         <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
@@ -182,27 +182,29 @@ export default async function BuyersPage({
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-8">
-                      <div className="text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
+                    <div className="grid gap-3 sm:flex sm:items-center sm:space-x-8">
+                      <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-8">
+                      <div className="rounded-[16px] border border-white/45 bg-white/35 px-3 py-2.5 text-left sm:border-0 sm:bg-transparent sm:p-0 sm:text-right">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#8b8594] sm:text-[10px] sm:tracking-[0.22em]">
                           Total Won Items
                         </p>
                         <p className="text-sm font-black text-[#2b2b2b]">{buyer.totalWonItems}</p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
+                      <div className="rounded-[16px] border border-white/45 bg-white/35 px-3 py-2.5 text-left sm:border-0 sm:bg-transparent sm:p-0 sm:text-right">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#8b8594] sm:text-[10px] sm:tracking-[0.22em]">
                           Total Amount
                         </p>
                         <p className="text-sm font-black text-[#2b2b2b]">
                           {formatCurrency(buyer.totalAmount)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      </div>
+                      <div className="flex items-center justify-between gap-3 sm:justify-end">
                         <StatusBadge
                           label={buyer.collectionStatus}
                           variant={buyer.collectionStatus === "open" ? "emerald" : buyer.collectionStatus === "finalized" ? "indigo" : "slate"}
                         />
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" className="h-8 px-3 text-[11px] sm:h-9 sm:px-3.5 sm:text-xs">
                           View Items
                         </Button>
                       </div>
@@ -219,15 +221,15 @@ export default async function BuyersPage({
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <Card className="sticky top-8 overflow-hidden border-0">
-            <CardHeader className="bg-[linear-gradient(135deg,rgba(255,142,110,0.9),rgba(183,156,245,0.92))] p-6 text-white">
-              <div className="flex items-center space-x-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-lg font-bold text-white">
+        <div className="space-y-4 sm:space-y-6">
+          <Card className="overflow-hidden border-0 lg:sticky lg:top-8">
+            <CardHeader className="bg-[linear-gradient(135deg,rgba(255,142,110,0.9),rgba(183,156,245,0.92))] p-4 text-white sm:p-6">
+              <div className="flex items-center space-x-3 sm:space-x-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-base font-bold text-white sm:h-12 sm:w-12 sm:text-lg">
                   {selectedBuyer?.buyerName.charAt(0) ?? "?"}
                 </div>
                 <div>
-                  <CardTitle className="text-lg font-bold">
+                  <CardTitle className="text-base font-bold sm:text-lg">
                     {selectedBuyer?.buyerName ?? "Select a buyer"}
                   </CardTitle>
                   <CardDescription className="text-xs text-white/75">
@@ -236,15 +238,15 @@ export default async function BuyersPage({
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-5 p-6">
+            <CardContent className="space-y-4 p-4 sm:space-y-5 sm:p-6">
               {selectedBuyer ? (
                 <>
-                  <div className="glass-section flex items-center justify-between rounded-[24px] p-4">
+                  <div className="glass-section flex items-center justify-between rounded-[18px] p-3 sm:rounded-[24px] sm:p-4">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#8b8594] sm:text-[10px] sm:tracking-[0.22em]">
                         Collection Status
                       </p>
-                      <p className="mt-1 text-sm font-bold text-[#2b2b2b]">
+                      <p className="mt-1 text-[13px] font-bold text-[#2b2b2b] sm:text-sm">
                         {selectedBuyer.collectionName}
                       </p>
                     </div>
@@ -255,32 +257,32 @@ export default async function BuyersPage({
                   </div>
 
                   <div>
-                    <p className="mb-3 px-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#8b8594]">
+                    <p className="mb-2 px-1 text-[9px] font-black uppercase tracking-[0.18em] text-[#8b8594] sm:mb-3 sm:text-[10px] sm:tracking-[0.22em]">
                       Won items ({selectedBuyer.totalWonItems})
                     </p>
-                    <div className="soft-scrollbar max-h-[420px] space-y-3 overflow-y-auto pr-2">
+                    <div className="soft-scrollbar max-h-[420px] space-y-2.5 overflow-y-auto pr-1 sm:space-y-3 sm:pr-2">
                       {selectedBuyer.items.map((item) => (
                         <Link
                           key={item.itemId}
                           href={`/collections/${selectedBuyer.collectionId}/items/${item.itemId}`}
-                          className="glass-section group flex items-center space-x-4 rounded-[22px] p-3"
+                          className="glass-section group flex items-center space-x-3 rounded-[18px] p-2.5 sm:space-x-4 sm:rounded-[22px] sm:p-3"
                         >
-                          <div className="h-14 w-14 overflow-hidden rounded-xl shadow-sm">
+                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl shadow-sm sm:h-14 sm:w-14">
                             <img src={item.thumbnailUrl} alt={`Item ${item.itemNumber}`} className="h-full w-full object-cover" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between">
-                              <p className="text-xs font-black text-[#2b2b2b]">
+                              <p className="text-[11px] font-black text-[#2b2b2b] sm:text-xs">
                                 Item #{String(item.itemNumber).padStart(2, "0")}
                               </p>
-                              <p className="text-xs font-black text-[#2b2b2b]">
+                              <p className="text-[11px] font-black text-[#2b2b2b] sm:text-xs">
                                 {formatCurrency(item.resolvedPrice)}
                               </p>
                             </div>
-                            <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
+                            <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.18em] text-[#8b8594] sm:text-[10px] sm:tracking-[0.22em]">
                               {item.batchTitle}
                             </p>
-                            <div className="mt-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.22em] text-[#8b8594]">
+                            <div className="mt-2 flex items-center justify-between text-[9px] font-bold uppercase tracking-[0.18em] text-[#8b8594] sm:text-[10px] sm:tracking-[0.22em]">
                               <span>{formatClaimWord(item.claimWord)}</span>
                               <span>{formatDateTime(item.claimedAt)}</span>
                             </div>
@@ -290,20 +292,20 @@ export default async function BuyersPage({
                     </div>
                   </div>
 
-                  <div className="space-y-3 border-t border-white/45 pt-5">
+                  <div className="space-y-3 border-t border-white/45 pt-4 sm:pt-5">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-[#6b6b6b]">Subtotal</p>
-                      <p className="text-sm font-black text-[#2b2b2b]">
+                      <p className="text-[13px] font-bold text-[#6b6b6b] sm:text-sm">Subtotal</p>
+                      <p className="text-[13px] font-black text-[#2b2b2b] sm:text-sm">
                         {formatCurrency(selectedBuyer.totalAmount)}
                       </p>
                     </div>
-                    <Button className="h-12 w-full">
+                    <Button className="h-11 w-full sm:h-12">
                       <Download className="mr-2 h-4 w-4" />
                       Download Invoice
                     </Button>
                     <Button
                       variant="outline"
-                      className="h-12 w-full"
+                      className="h-11 w-full sm:h-12"
                     >
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Message Buyer

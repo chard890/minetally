@@ -140,6 +140,28 @@ function normalizeClaimWord(claimWord?: string | null): ClaimWord | null {
   }
 }
 
+function deriveItemStatus(item: CollectionDetailItemRow): ItemStatus {
+  const winner = item.item_winners?.[0];
+
+  if (item.status === 'locked') {
+    return 'locked';
+  }
+
+  if (winner?.is_manual_override || item.status === 'manual_override') {
+    return 'manual_override';
+  }
+
+  if (item.status === 'needs_review') {
+    return 'needs_review';
+  }
+
+  if (winner) {
+    return 'claimed';
+  }
+
+  return item.status;
+}
+
 export class CollectionRepository {
   static async listCollections(): Promise<CollectionListItem[]> {
     const { data, error } = await getServiceSupabase()
@@ -213,35 +235,11 @@ export class CollectionRepository {
     const detail = data as CollectionDetailRow;
 
     // Mapping logic to reconstruct the detailed object
-    return {
-      id: detail.id,
-      name: detail.name,
-      startDate: detail.start_date,
-      endDate: detail.end_date,
-      finalizeDate: detail.finalize_date,
-      status: detail.status,
-      connectedFacebookPage: detail.facebook_pages?.page_name || 'Disconnected',
-      totalBatchPosts: detail.total_batch_posts || 0,
-      totalItemPhotos: detail.total_items || 0,
-      totalClaimedItems: detail.total_claimed_items || 0,
-      needsReviewCount: detail.total_needs_review || 0,
-      totalCollectionValue: Number(detail.total_value ?? 0),
-      manualOverridesCount: detail.manual_overrides_count || 0,
-      cancelItemsCount: detail.cancel_items_count || 0,
-      last_synced_at: detail.last_synced_at,
-      sync_error: detail.sync_error,
-      batches: (detail.batch_posts || []).map((batch) => ({
-        id: batch.id,
-        title: batch.title,
-        postedAt: batch.posted_at,
-        syncStatus: normalizeBatchSyncStatus(batch.sync_status),
-        syncNote: batch.sync_note || '',
-        last_synced_at: batch.last_synced_at,
-        sync_error: batch.sync_error,
-        itemPhotos: batch.total_items || 0,
-        claimedItems: batch.total_claimed_items || 0,
-        needsReviewCount: batch.total_needs_review || 0,
-        items: (Array.isArray(batch.items) ? batch.items : []).map((item) => ({
+    const batches = (detail.batch_posts || []).map((batch) => {
+      const items = (Array.isArray(batch.items) ? batch.items : []).map((item) => {
+        const effectiveStatus = deriveItemStatus(item);
+
+        return {
           id: item.id,
           itemNumber: item.item_number,
           title: item.title || `Item #${item.item_number}`,
@@ -249,12 +247,12 @@ export class CollectionRepository {
           thumbnailUrl: item.thumbnail_url,
           photoId: item.meta_media_id,
           sizeLabel: item.size_label ?? undefined,
-          status: item.status,
+          status: effectiveStatus,
           sourceBatchPostId: batch.id,
           sourceBatchTitle: batch.title,
           sourcePostUrl: batch.meta_post_id ? `https://facebook.com/${batch.meta_post_id}` : '',
           priceReviewStatus: normalizePriceReviewStatus(item.price_review_status),
-          claimStatus: item.claim_status ?? item.status,
+          claimStatus: item.claim_status ?? effectiveStatus,
           rawPriceText: item.raw_price_text,
           priceMap: item.price_map || {},
           needsPriceReview: item.needs_price_review ?? normalizePriceReviewStatus(item.price_review_status) === 'needs_review',
@@ -263,7 +261,7 @@ export class CollectionRepository {
             buyerName: item.item_winners[0].buyer_name,
             timestamp: item.item_winners[0].resolved_at,
             claimWord: normalizeClaimWord(item.item_winners[0].winning_claim_word) || 'mine',
-            source: item.item_winners[0].is_manual_override ? 'manual' : 'auto'
+            source: item.item_winners[0].is_manual_override ? 'manual' as const : 'auto' as const
           } : null,
           winningClaimWord: normalizeClaimWord(item.item_winners?.[0]?.winning_claim_word) || null,
           resolvedPrice:
@@ -271,7 +269,7 @@ export class CollectionRepository {
               ? Number(item.item_winners[0].resolved_price)
               : null,
           commentCount: item.comments?.length || 0,
-          hasManualOverride: !!item.item_winners?.[0]?.is_manual_override || item.status === 'manual_override',
+          hasManualOverride: !!item.item_winners?.[0]?.is_manual_override || effectiveStatus === 'manual_override',
           cancelCount: (item.comments || []).filter((comment) => comment.is_cancel_comment).length,
           comments: (item.comments || []).map((comment) => ({
             id: comment.id,
@@ -289,8 +287,51 @@ export class CollectionRepository {
               ...(comment.is_cancel_comment ? ['cancel comment'] as const : []),
             ]
           }))
-        }))
-      }))
+        };
+      });
+
+      const claimedItems = items.filter((item) =>
+        item.status === 'claimed' || item.status === 'manual_override' || item.status === 'locked'
+      ).length;
+      const needsReviewCount = items.filter((item) => item.status === 'needs_review').length;
+
+      return {
+        id: batch.id,
+        title: batch.title,
+        postedAt: batch.posted_at,
+        syncStatus: normalizeBatchSyncStatus(batch.sync_status),
+        syncNote: batch.sync_note || '',
+        last_synced_at: batch.last_synced_at,
+        sync_error: batch.sync_error,
+        itemPhotos: items.length || batch.total_items || 0,
+        claimedItems,
+        needsReviewCount,
+        items,
+      };
+    });
+
+    const totalClaimedItems = batches.reduce((sum, batch) => sum + batch.claimedItems, 0);
+    const totalNeedsReview = batches.reduce((sum, batch) => sum + batch.needsReviewCount, 0);
+    const totalItemPhotos = batches.reduce((sum, batch) => sum + batch.itemPhotos, 0);
+
+    return {
+      id: detail.id,
+      name: detail.name,
+      startDate: detail.start_date,
+      endDate: detail.end_date,
+      finalizeDate: detail.finalize_date,
+      status: detail.status,
+      connectedFacebookPage: detail.facebook_pages?.page_name || 'Disconnected',
+      totalBatchPosts: detail.total_batch_posts || 0,
+      totalItemPhotos,
+      totalClaimedItems,
+      needsReviewCount: totalNeedsReview,
+      totalCollectionValue: Number(detail.total_value ?? 0),
+      manualOverridesCount: detail.manual_overrides_count || 0,
+      cancelItemsCount: detail.cancel_items_count || 0,
+      last_synced_at: detail.last_synced_at,
+      sync_error: detail.sync_error,
+      batches
     };
   }
 

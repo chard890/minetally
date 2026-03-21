@@ -52,39 +52,41 @@ export function ItemActionButtons({ collectionId, batchId, item }: ItemActionBut
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:justify-end">
       {showManualWinner ? (
-        <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-right-4">
+        <div className="flex w-full flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm animate-in fade-in slide-in-from-right-4 sm:w-auto sm:flex-row sm:items-center sm:p-1">
           <input 
             type="text"
             placeholder="Buyer Name..."
             value={manualBuyerName}
             onChange={(e) => setManualBuyerName(e.target.value)}
-            className="h-9 px-3 text-sm font-medium border-0 focus:ring-0 bg-transparent min-w-[150px]"
+            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:h-9 sm:min-w-[180px] sm:border-0 sm:bg-transparent sm:focus:ring-0"
             autoFocus
           />
-          <Button 
-            size="sm" 
-            className="h-8 rounded-lg bg-emerald-600 font-bold px-3"
-            onClick={handleSaveManual}
-            disabled={isPending}
-          >
-            <CheckCircle2 className="h-4 w-4 mr-1" />
-            Set
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-8 rounded-lg font-bold px-2"
-            onClick={() => setShowManualWinner(false)}
-          >
-            Esc
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              className="h-10 flex-1 rounded-lg bg-emerald-600 px-3 font-bold sm:h-8 sm:flex-none"
+              onClick={handleSaveManual}
+              disabled={isPending}
+            >
+              <CheckCircle2 className="mr-1 h-4 w-4" />
+              Set
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-10 rounded-lg px-3 font-bold sm:h-8 sm:px-2"
+              onClick={() => setShowManualWinner(false)}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       ) : (
         <Button 
           variant="outline" 
-          className="rounded-xl font-bold"
+          className="h-11 w-full rounded-xl font-bold sm:w-auto"
           onClick={() => setShowManualWinner(true)}
           disabled={isPending || item.status === 'locked'}
         >
@@ -95,7 +97,7 @@ export function ItemActionButtons({ collectionId, batchId, item }: ItemActionBut
       
       <Button 
         variant="outline" 
-        className="rounded-xl font-bold"
+        className="h-11 w-full rounded-xl font-bold sm:w-auto"
         onClick={() => handleAction('unclaimed')}
         disabled={isPending || item.status === 'locked'}
       >
@@ -105,7 +107,7 @@ export function ItemActionButtons({ collectionId, batchId, item }: ItemActionBut
       
       <Button 
         variant="outline" 
-        className="rounded-xl font-bold text-amber-700"
+        className="h-11 w-full rounded-xl font-bold text-amber-700 sm:w-auto"
         onClick={() => handleAction('needs_review')}
         disabled={isPending || item.status === 'locked'}
       >
@@ -114,7 +116,7 @@ export function ItemActionButtons({ collectionId, batchId, item }: ItemActionBut
       </Button>
       
       <Button 
-        className="rounded-xl bg-indigo-600 font-bold"
+        className="h-11 w-full rounded-xl bg-indigo-600 font-bold sm:w-auto"
         onClick={() => handleAction('lock')}
         disabled={isPending || item.status === 'locked'}
       >
@@ -142,7 +144,7 @@ export function PriceOverrideAction({ collectionId, batchId, item }: ItemActionB
   };
 
   return (
-    <div className="mt-3 flex items-center gap-3">
+    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
       <input
         type="number"
         placeholder="Only if needed"
@@ -153,7 +155,7 @@ export function PriceOverrideAction({ collectionId, batchId, item }: ItemActionB
       />
       <Button 
         variant="outline" 
-        className="h-11 rounded-xl font-bold"
+        className="h-11 w-full rounded-xl font-bold sm:w-auto"
         onClick={handleSavePrice}
         disabled={isPending || item.status === 'locked'}
       >
