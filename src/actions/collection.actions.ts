@@ -35,6 +35,8 @@ function getErrorStack(error: unknown) {
   return error instanceof Error ? error.stack ?? '' : '';
 }
 
+const PRICE_REVIEW_REASON = 'Price could not be resolved for the confirmed winner.';
+
 function isTokenErrorMessage(message: string) {
   const normalized = message.toLowerCase();
   return normalized.includes('access token')
@@ -673,7 +675,11 @@ export async function syncBatchCommentsAction(
         if (!parentComment || !confirmationReply) {
           appendFileSync(logPath, `[ERROR] Item ${item.id}: Could not find internal database IDs for confirmed winner comments.\n`);
         } else {
-          const requiresManualReview = confirmedWinner.winner.needsReview || needsReview;
+          const hasPriceOnlyReview =
+            confirmedWinner.winner.needsReview
+            && confirmedWinner.winner.reviewReason === PRICE_REVIEW_REASON;
+          const requiresManualReview =
+            needsReview || (confirmedWinner.winner.needsReview && !hasPriceOnlyReview);
           const needsPriceReview = confirmedWinner.winner.resolvedPrice === null;
           const traceWinner = shouldTraceItem(item.id, requiresManualReview || needsPriceReview);
           if (confirmedWinner.winner.reviewReason) {
@@ -704,7 +710,7 @@ export async function syncBatchCommentsAction(
             resolvedPrice: confirmedWinner.winner.resolvedPrice,
             pricingSource: confirmedWinner.winner.pricingSource,
             requiresManualReview,
-            reviewReason: confirmedWinner.winner.reviewReason,
+            reviewReason: hasPriceOnlyReview ? null : confirmedWinner.winner.reviewReason,
             confirmedAt: confirmedWinner.winner.confirmedAt,
           });
 
@@ -713,7 +719,7 @@ export async function syncBatchCommentsAction(
             requiresManualReview ? 'needs_review' : 'claimed',
             confirmedWinner.winner.resolvedPrice,
             confirmedWinner.winner.claimWord,
-            confirmedWinner.winner.reviewReason,
+            hasPriceOnlyReview ? null : confirmedWinner.winner.reviewReason,
             needsPriceReview,
           );
 
@@ -950,7 +956,11 @@ export async function syncItemClaims(itemId: string) {
         if (!parentComment || !confirmationReply) {
           appendFileSync(logPath, `[ERROR] Item ${itemId}: Could not find internal database IDs for confirmed winner in syncItemClaims.\n`);
         } else {
-          const requiresManualReview = confirmedWinner.winner.needsReview || needsReview;
+          const hasPriceOnlyReview =
+            confirmedWinner.winner.needsReview
+            && confirmedWinner.winner.reviewReason === PRICE_REVIEW_REASON;
+          const requiresManualReview =
+            needsReview || (confirmedWinner.winner.needsReview && !hasPriceOnlyReview);
           const needsPriceReview = confirmedWinner.winner.resolvedPrice === null;
           if (confirmedWinner.winner.reviewReason) {
             appendFileSync(logPath, `[REVIEW] Item ${itemId}: ${confirmedWinner.winner.reviewReason}\n`);
@@ -992,7 +1002,7 @@ export async function syncItemClaims(itemId: string) {
               resolvedPrice: confirmedWinner.winner.resolvedPrice,
               pricingSource: confirmedWinner.winner.pricingSource,
               needsReview: requiresManualReview,
-              reviewReason: confirmedWinner.winner.reviewReason,
+              reviewReason: hasPriceOnlyReview ? null : confirmedWinner.winner.reviewReason,
               status: requiresManualReview ? 'review_required' : 'auto',
               batchPost: {
                 connect: { id: item.batchPostId },
@@ -1007,7 +1017,7 @@ export async function syncItemClaims(itemId: string) {
             requiresManualReview ? 'needs_review' : 'claimed',
             confirmedWinner.winner.resolvedPrice,
             confirmedWinner.winner.claimWord,
-            confirmedWinner.winner.reviewReason,
+            hasPriceOnlyReview ? null : confirmedWinner.winner.reviewReason,
             needsPriceReview,
           );
 
