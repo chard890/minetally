@@ -70,7 +70,14 @@ class CollectionService {
   public async getBuyerTotals(collectionId: string): Promise<ReturnType<typeof buyerTotalService.aggregateRows>> {
     try {
       const settings = await settingsService.getSettings();
-      await WinnerRepository.repairCollectionWinnerRecords(collectionId, settings);
+      try {
+        await WinnerRepository.repairCollectionWinnerRecords(collectionId, settings);
+      } catch (error) {
+        console.error(
+          `[CollectionService] Winner repair failed for collection ${collectionId}; continuing with existing winner rows:`,
+          error,
+        );
+      }
       const rows = await WinnerRepository.listAggregationRows(collectionId);
       return buyerTotalService.aggregateRows(rows);
     } catch (error) {
