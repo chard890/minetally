@@ -1,7 +1,7 @@
 export type SellerConfirmationParseResult =
   | {
       isValid: true;
-      buyerName: string;
+      buyerName: string | null;
     }
   | {
       isValid: false;
@@ -21,17 +21,9 @@ class SellerConfirmationService {
     }
 
     const buyerName = trimmedMessage.slice(0, -5).trim();
-    if (!buyerName) {
-      return {
-        isValid: false,
-        buyerName: null,
-        reason: 'Reply ends with "yours" but has no buyer name before it.',
-      };
-    }
-
     return {
       isValid: true,
-      buyerName,
+      buyerName: buyerName || null,
     };
   }
 }
