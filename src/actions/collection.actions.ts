@@ -333,7 +333,9 @@ export async function syncBatchCommentsAction(batchId: string) {
     if (!batch.collection.page) throw new Error('Linked Facebook Page not found');
     
     const accessToken = getStoredPageAccessToken(batch.collection.page.accessToken);
-    if (!accessToken) throw new Error('Facebook Page access token not found');
+    const userAccessToken = getStoredPageAccessToken(batch.collection.page.userAccessToken);
+    const primaryAccessToken = accessToken ?? userAccessToken;
+    if (!primaryAccessToken) throw new Error('Facebook access token not found');
     const collectionId = batch.collectionId;
     const settings = await settingsService.getSettings();
     let totalWinnersDetected = 0;
@@ -349,7 +351,7 @@ export async function syncBatchCommentsAction(batchId: string) {
 
       const rawMedia = await backfillRawMediaByBatchPost({
         batchPostId: batch.metaPostId,
-        accessToken,
+        accessToken: primaryAccessToken,
         itemId: item.id,
         metaMediaId: item.metaMediaId,
         currentRawMedia: item.raw_media_json,
@@ -357,22 +359,38 @@ export async function syncBatchCommentsAction(batchId: string) {
       
       appendFileSync(logPath, `[ACTION] Syncing comments for item ${item.id} (media: ${item.metaMediaId})\n`);
       
-      const comments = await metaService.getMediaComments(item.metaMediaId, accessToken, {
+      let comments = await metaService.getMediaComments(item.metaMediaId, primaryAccessToken, {
         pageId: batch.collection.page.metaPageId,
         batchPostId: batch.metaPostId,
         itemId: item.id,
         rawMedia,
       });
+      if (comments.length === 0 && userAccessToken && userAccessToken !== accessToken) {
+        comments = await metaService.getMediaComments(item.metaMediaId, userAccessToken, {
+          pageId: batch.collection.page.metaPageId,
+          batchPostId: batch.metaPostId,
+          itemId: item.id,
+          rawMedia,
+        });
+      }
       let effectiveComments = comments;
 
       if (comments.length === 0 && batch.metaPostId) {
         if (!batchLevelCommentsFetched) {
-          const batchLevelComments = await metaService.getMediaComments(batch.metaPostId, accessToken, {
+          let batchLevelComments = await metaService.getMediaComments(batch.metaPostId, primaryAccessToken, {
             pageId: batch.collection.page.metaPageId,
             batchPostId: batch.metaPostId,
             itemId: item.id,
             rawMedia: { sourceKind: 'full_picture_fallback' },
           });
+          if (batchLevelComments.length === 0 && userAccessToken && userAccessToken !== accessToken) {
+            batchLevelComments = await metaService.getMediaComments(batch.metaPostId, userAccessToken, {
+              pageId: batch.collection.page.metaPageId,
+              batchPostId: batch.metaPostId,
+              itemId: item.id,
+              rawMedia: { sourceKind: 'full_picture_fallback' },
+            });
+          }
           batchLevelCommentsByItemNumber = groupBatchLevelCommentsByItemNumber(batchLevelComments, maxItemNumber);
           batchLevelCommentsFetched = true;
           appendFileSync(
