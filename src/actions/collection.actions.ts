@@ -339,6 +339,9 @@ export async function syncBatchCommentsAction(batchId: string) {
     const collectionId = batch.collectionId;
     const settings = await settingsService.getSettings();
     let totalWinnersDetected = 0;
+    let totalCommentsFetched = 0;
+    let totalCommentsSaved = 0;
+    let totalCommentUpsertErrors = 0;
     let batchLevelCommentsByItemNumber = new Map<number, MetaComment[]>();
     let batchLevelCommentsFetched = false;
     const maxItemNumber = batch.items.reduce((max, item) => Math.max(max, item.itemNumber), 0);
@@ -403,6 +406,7 @@ export async function syncBatchCommentsAction(batchId: string) {
       }
 
       appendFileSync(logPath, `[ACTION] Item ${item.id}: Fetched ${effectiveComments.length} raw comments\n`);
+      totalCommentsFetched += effectiveComments.length;
       const traceRawComments = shouldTraceItem(item.id);
       if (traceRawComments) {
         effectiveComments.forEach((comment) => {
@@ -492,7 +496,9 @@ export async function syncBatchCommentsAction(batchId: string) {
               select: { id: true, metaCommentId: true },
             });
             commentDbIdByMetaId.set(savedComment.metaCommentId ?? rawComment.id, savedComment.id);
+            totalCommentsSaved++;
           } catch (upsertError) {
+            totalCommentUpsertErrors++;
             appendFileSync(logPath, `[ERROR] Failed to upsert comment ${rawComment.id}: ${getErrorMessage(upsertError)}\n`);
           }
         }
@@ -618,8 +624,36 @@ export async function syncBatchCommentsAction(batchId: string) {
     revalidatePath(`/collections/${collectionId}`);
     revalidatePath(`/collections/${collectionId}/batches/${batchId}`);
     revalidatePath('/buyers');
+
+    if (totalCommentsFetched === 0) {
+      return {
+        success: false,
+        error: 'No Facebook comments were fetched for this batch.',
+        winnersCount: totalWinnersDetected,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
+
+    if (totalCommentsSaved === 0 && totalCommentUpsertErrors > 0) {
+      return {
+        success: false,
+        error: 'Facebook comments were fetched but could not be saved to the database.',
+        winnersCount: totalWinnersDetected,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
     
-    return { success: true, winnersCount: totalWinnersDetected };
+    return {
+      success: true,
+      winnersCount: totalWinnersDetected,
+      commentsFetched: totalCommentsFetched,
+      commentsSaved: totalCommentsSaved,
+      commentUpsertErrors: totalCommentUpsertErrors,
+    };
   } catch (error) {
     let errorMessage = getErrorMessage(error);
     if (isTokenErrorMessage(errorMessage)) {
@@ -1009,6 +1043,9 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
     appendFileSync(logPath, `[PIPELINE] Found ${batches.length} batches to sync comments for collection ${collectionId}\n`);
 
     let totalWinners = 0;
+    let totalCommentsFetched = 0;
+    let totalCommentsSaved = 0;
+    let totalCommentUpsertErrors = 0;
 
     for (const batch of batches) {
       appendFileSync(logPath, `[PIPELINE] Syncing comments for batch ${batch.id} (${batch.title})\n`);
@@ -1016,13 +1053,47 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
       if (result.success) {
         totalWinners += result.winnersCount || 0;
       }
+      totalCommentsFetched += result.commentsFetched || 0;
+      totalCommentsSaved += result.commentsSaved || 0;
+      totalCommentUpsertErrors += result.commentUpsertErrors || 0;
     }
 
     revalidatePath(`/collections/${collectionId}`);
     revalidatePath('/buyers');
 
     appendFileSync(logPath, `[PIPELINE] syncAllCollectionBatchCommentsAction COMPLETE. Total winners detected: ${totalWinners}\n`);
-    return { success: true, batchesSynced: batches.length, winnersCount: totalWinners };
+    if (totalCommentsFetched === 0) {
+      return {
+        success: false,
+        error: 'No Facebook comments were fetched for any batch in this collection.',
+        batchesSynced: batches.length,
+        winnersCount: totalWinners,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
+
+    if (totalCommentsSaved === 0 && totalCommentUpsertErrors > 0) {
+      return {
+        success: false,
+        error: 'Facebook comments were fetched but could not be saved to the database.',
+        batchesSynced: batches.length,
+        winnersCount: totalWinners,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
+
+    return {
+      success: true,
+      batchesSynced: batches.length,
+      winnersCount: totalWinners,
+      commentsFetched: totalCommentsFetched,
+      commentsSaved: totalCommentsSaved,
+      commentUpsertErrors: totalCommentUpsertErrors,
+    };
   } catch (error) {
     appendFileSync(logPath, `[PIPELINE] syncAllCollectionBatchCommentsAction ERROR: ${getErrorMessage(error)}\n`);
     console.error('Error syncing all collection batch comments:', error);
