@@ -20,9 +20,16 @@ class SellerConfirmationService {
       };
     }
 
+<<<<<<< HEAD
     return {
       isValid: true,
       buyerName: trimmedMessage.slice(0, -5).trim() || null,
+=======
+    const buyerName = trimmedMessage.slice(0, -5).trim();
+    return {
+      isValid: true,
+      buyerName: buyerName || null,
+>>>>>>> origin/main
     };
   }
 }

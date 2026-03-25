@@ -3,7 +3,7 @@
 import { Calendar, Facebook, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useState, useTransition } from "react";
-import { createCollectionAction } from "@/actions/workflow";
+import { createCollectionAction, syncCollectionAction } from "@/actions/workflow";
 import { useRouter } from "next/navigation";
 import { Toast, type ToastType } from "@/components/ui/Toast";
 
@@ -28,14 +28,10 @@ export function CreateCollectionForm({ pages, activePageId }: CreateCollectionFo
       
       if (result.success && result.id) {
         setSyncStatus('Syncing Facebook posts...');
-        // We call the full sync action here
-        const { fullCollectionSyncAction } = await import('@/actions/collection.actions');
+        const syncResult = await syncCollectionAction(result.id);
         
-        setSyncStatus('Importing items and detecting winners...');
-        const syncResult = await fullCollectionSyncAction(result.id);
-        
-        if (syncResult.success) {
-          setSyncStatus('Sync complete!');
+        if ('success' in syncResult && syncResult.success) {
+          setSyncStatus('Collection ready.');
           if ((syncResult.postsImported || 0) === 0) {
             setToast({
               message: syncResult.error || 'Collection created. No Facebook posts were found in the selected date range.',
@@ -43,13 +39,17 @@ export function CreateCollectionForm({ pages, activePageId }: CreateCollectionFo
             });
           } else {
             setToast({
-              message: `Collection created. Imported ${syncResult.postsImported} posts and detected ${syncResult.winnersCount} winners.`,
+              message: `Collection created. Imported ${syncResult.postsImported} posts.`,
               type: 'success',
             });
           }
         } else {
+          const errorMessage =
+            'error' in syncResult
+              ? syncResult.error
+              : 'Collection created, but post import had issues. You can retry manually from the collection page.';
           setToast({
-            message: syncResult.error || 'Collection created, but automatic sync had issues. You can retry manually.',
+            message: errorMessage || 'Collection created, but post import had issues. You can retry manually from the collection page.',
             type: 'error',
           });
         }

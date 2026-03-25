@@ -87,7 +87,10 @@ class ConfirmedWinnerService {
           const parentBuyerName = winnerIntegrityService.normalizeBuyerName(
             commentsById.get(entry.reply.parentCommentId ?? "")?.from?.name ?? null,
           );
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
           return (explicitBuyerName ?? parentBuyerName ?? "").toLowerCase();
         })
         .filter((name) => name.length > 0),
@@ -115,10 +118,18 @@ class ConfirmedWinnerService {
       earliestValidConfirmation.parentComment?.from?.name ?? null,
     );
     const fallbackBuyerName = winnerIntegrityService.normalizeBuyerName(parentProvisional?.buyerName ?? null);
+<<<<<<< HEAD
     const normalizedClaimWord = winnerIntegrityService.normalizeClaimWord(
       parentProvisional?.claimWord ?? null,
       input.claimCodeMapping,
     );
+=======
+    const buyerName =
+      explicitBuyerName
+      ?? parentBuyerName
+      ?? fallbackBuyerName
+      ?? winnerIntegrityService.unknownCommenterPlaceholder;
+>>>>>>> origin/main
     const price = priceService.resolveConfirmedWinnerPrice({
       pictureLevelText: input.pictureLevelPriceText,
       postLevelText: input.postLevelPriceText,
@@ -136,11 +147,15 @@ class ConfirmedWinnerService {
         parentCommentMetaId: earliestValidConfirmation.parentComment?.id ?? earliestValidConfirmation.reply.parentCommentId ?? "",
         confirmationReplyMetaId: earliestValidConfirmation.reply.id,
         buyerFacebookId: earliestValidConfirmation.parentComment?.from?.id?.trim() || null,
+<<<<<<< HEAD
         buyerName:
           explicitBuyerName
           ?? parentBuyerName
           ?? fallbackBuyerName
           ?? winnerIntegrityService.unknownCommenterPlaceholder,
+=======
+        buyerName,
+>>>>>>> origin/main
         buyerCommentMessage: earliestValidConfirmation.parentComment?.message ?? null,
         confirmationMessage: earliestValidConfirmation.reply.message,
         confirmedAt: earliestValidConfirmation.reply.created_time,

@@ -17,6 +17,21 @@ type ItemUpsertInput = {
 };
 
 export class ItemRepository {
+  static async listByBatchPostId(batchPostId: string) {
+    const { data, error } = await getServiceSupabase()
+      .from('items')
+      .select('*')
+      .eq('batch_post_id', batchPostId)
+      .order('item_number', { ascending: true });
+
+    if (error) {
+      console.error('Error listing batch items:', error);
+      return [];
+    }
+
+    return data ?? [];
+  }
+
   static async findById(id: string) {
     const { data, error } = await getServiceSupabase()
       .from('items')
