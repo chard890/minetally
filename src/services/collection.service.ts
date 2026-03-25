@@ -68,10 +68,15 @@ class CollectionService {
   }
 
   public async getBuyerTotals(collectionId: string): Promise<ReturnType<typeof buyerTotalService.aggregateRows>> {
-    const settings = await settingsService.getSettings();
-    await WinnerRepository.repairCollectionWinnerRecords(collectionId, settings);
-    const rows = await WinnerRepository.listAggregationRows(collectionId);
-    return buyerTotalService.aggregateRows(rows);
+    try {
+      const settings = await settingsService.getSettings();
+      await WinnerRepository.repairCollectionWinnerRecords(collectionId, settings);
+      const rows = await WinnerRepository.listAggregationRows(collectionId);
+      return buyerTotalService.aggregateRows(rows);
+    } catch (error) {
+      console.error(`[CollectionService] Failed to load buyer totals for collection ${collectionId}:`, error);
+      return [];
+    }
   }
 
   public async getBuyerDetail(collectionId: string, buyerId: string) {
@@ -148,7 +153,7 @@ class CollectionService {
     return collection ? finalizationService.buildSnapshot(collection) : undefined;
   }
 
-  public async deleteCollection(id: string): Promise<boolean> {
+  public async deleteCollection(id: string): Promise<{ success: boolean; error?: string }> {
     return await CollectionRepository.deleteCollection(id);
   }
 }

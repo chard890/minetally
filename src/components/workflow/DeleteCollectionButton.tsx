@@ -35,7 +35,7 @@ export function DeleteCollectionButton({
         setIsConfirming(false);
         router.refresh();
       } else {
-        alert("Failed to delete collection. Please try again.");
+        alert(result.error || "Failed to delete collection. Please try again.");
         setIsConfirming(false);
       }
     } catch (error) {

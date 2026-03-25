@@ -13,7 +13,8 @@ import { AuditLogRepository } from '@/repositories/audit-log.repository';
 import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
 import { winnerIntegrityService } from '@/services/winner-integrity.service';
 import { confirmedWinnerService } from '@/services/confirmed-winner.service';
-import { appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
+import { MetaSyncService } from '@/services/meta/meta-sync.service';
+import { appendSyncDiagnostic, appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { decryptToken } from '@/lib/token-crypto';
 import { revalidatePath } from 'next/cache';
 import { MetaComment } from '@/types';
@@ -833,30 +834,28 @@ export async function finalizeCollection(collectionId: string) {
  * Delete a collection
  */
 export async function deleteCollectionAction(collectionId: string) {
-  const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\delete-error.log';
-  
   try {
-    const startMsg = `[${new Date().toISOString()}] [deleteCollectionAction] START: ${collectionId}\n`;
-    appendFileSync(logPath, startMsg);
-    
+    appendSyncDiagnostic(`[${new Date().toISOString()}] [deleteCollectionAction] START: ${collectionId}\n`);
+
     if (!collectionService) {
-      appendFileSync(logPath, `[ERROR] collectionService is UNDEFINED\n`);
+      appendSyncDiagnostic('[deleteCollectionAction] collectionService is UNDEFINED\n');
       return { success: false, error: 'collectionService is undefined' };
     }
 
-    const success = await collectionService.deleteCollection(collectionId);
-    appendFileSync(logPath, `[DEBUG] collectionService.deleteCollection result: ${success}\n`);
-    
-    if (success) {
+    const result = await collectionService.deleteCollection(collectionId);
+    appendSyncDiagnostic(`[deleteCollectionAction] collectionService.deleteCollection result: ${JSON.stringify(result)}\n`);
+
+    if (result.success) {
       revalidatePath('/collections');
       return { success: true };
     }
-    return { success: false, error: 'Database delete failed' };
+    return { success: false, error: result.error ?? 'Database delete failed' };
   } catch (error) {
-    const errorMsg = `[${new Date().toISOString()}] [deleteCollectionAction] EXCEPTION: ${getErrorMessage(error)}\n${getErrorStack(error)}\n\n`;
-    appendFileSync(logPath, errorMsg);
+    appendSyncDiagnostic(
+      `[${new Date().toISOString()}] [deleteCollectionAction] EXCEPTION: ${getErrorMessage(error)}\n${getErrorStack(error)}\n\n`
+    );
     console.error('[deleteCollectionAction] ERROR:', error);
-    throw error;
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 /**
@@ -870,7 +869,16 @@ export async function fullCollectionSyncAction(collectionId: string) {
     
     // Stage 1: Sync Posts and Item Photos
     appendFileSync(logPath, `[PIPELINE] Stage 1: Syncing Posts and Items\n`);
-    await syncCollectionPosts(collectionId);
+    const stage1Result = await MetaSyncService.syncCollectionPosts(collectionId);
+    appendFileSync(logPath, `[PIPELINE] Stage 1 result: ${JSON.stringify(stage1Result)}\n`);
+    if (!stage1Result.success) {
+      return {
+        success: false,
+        error: stage1Result.error ?? 'Failed to sync collection posts.',
+        postsImported: 0,
+        winnersCount: 0,
+      };
+    }
     
     // Stage 2: Get all batches created for this collection
     const batches = await BatchRepository.listByCollection(collectionId);
@@ -887,11 +895,16 @@ export async function fullCollectionSyncAction(collectionId: string) {
     }
     
     appendFileSync(logPath, `[PIPELINE] fullCollectionSyncAction COMPLETE. Total winners detected: ${totalWinners}\n`);
-    return { success: true, winnersCount: totalWinners };
+    return {
+      success: true,
+      winnersCount: totalWinners,
+      postsImported: stage1Result.postsImported,
+      error: stage1Result.error,
+    };
   } catch (error) {
     appendFileSync(logPath, `[PIPELINE] fullCollectionSyncAction ERROR: ${getErrorMessage(error)}\n`);
     console.error('Error in fullCollectionSyncAction:', error);
-    return { success: false, error: getErrorMessage(error) };
+    return { success: false, error: getErrorMessage(error), postsImported: 0, winnersCount: 0 };
   }
 }
 

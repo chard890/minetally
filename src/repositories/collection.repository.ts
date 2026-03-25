@@ -509,23 +509,29 @@ export class CollectionRepository {
     });
   }
 
-  static async deleteCollection(id: string): Promise<boolean> {
-    const ownedPageIds = await this.getOwnedPageIds();
-    if (ownedPageIds.length === 0) {
-      return false;
+  static async deleteCollection(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const ownedPageIds = await this.getOwnedPageIds();
+      if (ownedPageIds.length === 0) {
+        return { success: false, error: 'No connected Facebook pages are available for this account.' };
+      }
+
+      const { error } = await getServiceSupabase()
+        .from('collections')
+        .delete()
+        .eq('id', id)
+        .in('page_id', ownedPageIds);
+
+      if (error) {
+        console.error('Error deleting collection:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Unexpected error deleting collection:', error);
+      return { success: false, error: message };
     }
-
-    const { error } = await getServiceSupabase()
-      .from('collections')
-      .delete()
-      .eq('id', id)
-      .in('page_id', ownedPageIds);
-
-    if (error) {
-      console.error('Error deleting collection:', error);
-      return false;
-    }
-
-    return true;
   }
 }
