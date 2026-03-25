@@ -43,6 +43,65 @@ function isTokenErrorMessage(message: string) {
     || normalized.includes('invalid oauth');
 }
 
+function extractReferencedItemNumber(message: string, maxItemNumber: number) {
+  const normalized = message.trim().toLowerCase();
+  const patterns = [
+    /(?:^|\s)#\s*(\d{1,3})(?=\s|$)/,
+    /(?:^|\s)item\s*(\d{1,3})(?=\s|$)/,
+    /^(\d{1,3})(?=\s*[a-z#(]|$)/,
+    /(?:^|\s)(\d{1,3})(?=\s+(?:mine|grab|steal|m|g|s)\b)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match) {
+      continue;
+    }
+
+    const itemNumber = Number(match[1]);
+    if (Number.isInteger(itemNumber) && itemNumber >= 1 && itemNumber <= maxItemNumber) {
+      return itemNumber;
+    }
+  }
+
+  return null;
+}
+
+function groupBatchLevelCommentsByItemNumber(
+  comments: MetaComment[],
+  maxItemNumber: number,
+) {
+  const topLevelById = new Map<string, MetaComment>();
+  const repliesByParentId = new Map<string, MetaComment[]>();
+
+  comments.forEach((comment) => {
+    if (comment.parentCommentId) {
+      const replies = repliesByParentId.get(comment.parentCommentId) ?? [];
+      replies.push(comment);
+      repliesByParentId.set(comment.parentCommentId, replies);
+      return;
+    }
+
+    topLevelById.set(comment.id, comment);
+  });
+
+  const grouped = new Map<number, MetaComment[]>();
+
+  topLevelById.forEach((comment) => {
+    const itemNumber = extractReferencedItemNumber(comment.message, maxItemNumber);
+    if (!itemNumber) {
+      return;
+    }
+
+    const thread = [comment, ...(repliesByParentId.get(comment.id) ?? [])];
+    const existing = grouped.get(itemNumber) ?? [];
+    existing.push(...thread);
+    grouped.set(itemNumber, existing);
+  });
+
+  return grouped;
+}
+
 async function markPageNeedsReconnect(pageId: string | null | undefined, errorMessage: string) {
   if (!pageId) {
     return;
@@ -279,6 +338,9 @@ export async function syncBatchCommentsAction(batchId: string) {
     const collectionId = batch.collectionId;
     const settings = await settingsService.getSettings();
     let totalWinnersDetected = 0;
+    let batchLevelCommentsByItemNumber = new Map<number, MetaComment[]>();
+    let batchLevelCommentsFetched = false;
+    const maxItemNumber = batch.items.reduce((max, item) => Math.max(max, item.itemNumber), 0);
 
     for (const item of batch.items) {
       if (!item.metaMediaId) {
@@ -302,15 +364,36 @@ export async function syncBatchCommentsAction(batchId: string) {
         itemId: item.id,
         rawMedia,
       });
-      appendFileSync(logPath, `[ACTION] Item ${item.id}: Fetched ${comments.length} raw comments\n`);
+      let effectiveComments = comments;
+
+      if (comments.length === 0 && batch.metaPostId) {
+        if (!batchLevelCommentsFetched) {
+          const batchLevelComments = await metaService.getMediaComments(batch.metaPostId, accessToken, {
+            pageId: batch.collection.page.metaPageId,
+            batchPostId: batch.metaPostId,
+            itemId: item.id,
+            rawMedia: { sourceKind: 'full_picture_fallback' },
+          });
+          batchLevelCommentsByItemNumber = groupBatchLevelCommentsByItemNumber(batchLevelComments, maxItemNumber);
+          batchLevelCommentsFetched = true;
+          appendFileSync(
+            logPath,
+            `[ACTION] Batch ${batch.id}: Fetched ${batchLevelComments.length} batch-level comments and mapped ${batchLevelCommentsByItemNumber.size} item threads\n`,
+          );
+        }
+
+        effectiveComments = batchLevelCommentsByItemNumber.get(item.itemNumber) ?? [];
+      }
+
+      appendFileSync(logPath, `[ACTION] Item ${item.id}: Fetched ${effectiveComments.length} raw comments\n`);
       const traceRawComments = shouldTraceItem(item.id);
       if (traceRawComments) {
-        comments.forEach((comment) => {
+        effectiveComments.forEach((comment) => {
           appendSyncTrace(`item:${item.id}:raw_comment`, comment);
         });
       }
       
-      const topLevelComments = comments.filter((comment) => !comment.parentCommentId);
+      const topLevelComments = effectiveComments.filter((comment) => !comment.parentCommentId);
       appendFileSync(logPath, `[ACTION] Item ${item.id}: Processing ${topLevelComments.length} top-level comments with claimService\n`);
       appendFileSync(logPath, `[DEBUG] Current Settings - Valid: ${JSON.stringify(settings.validClaimKeywords)}, Cancel: ${JSON.stringify(settings.cancelKeywords)}\n`);
       
@@ -320,7 +403,7 @@ export async function syncBatchCommentsAction(batchId: string) {
         itemId: item.id,
         batchPostId: item.batchPostId,
         pageId: batch.collection.page.metaPageId,
-        comments,
+        comments: effectiveComments,
         provisionalComments: processedComments,
         pictureLevelPriceText: item.rawPriceText,
         postLevelPriceText: batch.caption,
@@ -353,7 +436,7 @@ export async function syncBatchCommentsAction(batchId: string) {
       await prisma.$transaction(async (tx: TransactionClient) => {
         // 1. Save all comments
         const commentDbIdByMetaId = new Map<string, string>();
-        for (const rawComment of comments) {
+        for (const rawComment of effectiveComments) {
           if (!rawComment || !rawComment.id) {
              appendFileSync(logPath, `[WARN] Skipping null or invalid comment for item ${item.id}\n`);
              continue;
