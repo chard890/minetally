@@ -6,7 +6,6 @@ import {
 } from "@/types";
 import { buyerTotalService } from "@/services/buyer-total.service";
 import { finalizationService } from "@/services/finalization.service";
-import { settingsService } from "@/services/settings.service";
 import { CollectionRepository } from "@/repositories/collection.repository";
 import { WinnerRepository } from "@/repositories/winner.repository";
 
@@ -69,15 +68,6 @@ class CollectionService {
 
   public async getBuyerTotals(collectionId: string): Promise<ReturnType<typeof buyerTotalService.aggregateRows>> {
     try {
-      const settings = await settingsService.getSettings();
-      try {
-        await WinnerRepository.repairCollectionWinnerRecords(collectionId, settings);
-      } catch (error) {
-        console.error(
-          `[CollectionService] Winner repair failed for collection ${collectionId}; continuing with existing winner rows:`,
-          error,
-        );
-      }
       const rows = await WinnerRepository.listAggregationRows(collectionId);
       return buyerTotalService.aggregateRows(rows);
     } catch (error) {
