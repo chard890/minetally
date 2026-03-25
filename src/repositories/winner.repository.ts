@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { getServiceSupabase } from "@/lib/supabase";
 import { appendSyncDiagnostic } from "@/lib/sync-diagnostics";
 import { SellerSettings } from "@/types";
 import { winnerIntegrityService } from "@/services/winner-integrity.service";
@@ -229,46 +230,66 @@ export class WinnerRepository {
   }
 
   static async listAggregationRows(collectionId: string): Promise<WinnerAggregationRow[]> {
-    const winners = await prisma.itemWinner.findMany({
-      where: {
-        item: {
-          batchPost: {
-            collectionId,
-          },
-        },
-      },
-      include: {
-        item: {
-          include: {
-            batchPost: {
-              include: {
-                collection: true,
-              },
-            },
-          },
-        },
-        winnerComment: true,
-      },
-      orderBy: {
-        resolved_at: "desc",
-      },
-    });
+    const { data, error } = await getServiceSupabase()
+      .from('item_winners')
+      .select(`
+        item_id,
+        buyer_id,
+        commenter_id,
+        buyer_name,
+        winning_claim_word,
+        resolved_price,
+        resolved_at,
+        pricing_source,
+        needs_review,
+        review_reason,
+        items!inner (
+          item_number,
+          thumbnail_url,
+          raw_price_text,
+          batch_post_id,
+          batch_posts!inner (
+            title,
+            collection_id,
+            collections!inner (
+              name,
+              status
+            )
+          )
+        ),
+        comments (
+          commenter_id,
+          commenter_name
+        )
+      `)
+      .eq('items.batch_posts.collection_id', collectionId)
+      .order('resolved_at', { ascending: false });
 
-    return winners.map((winner) => {
-      const buyerName = winnerIntegrityService.normalizeBuyerName(winner.buyerName);
-      const buyerId = winnerIntegrityService.normalizeBuyerId(winner.commenterId ?? winner.buyerId);
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return (data ?? []).map((winner) => {
+      const item = Array.isArray(winner.items) ? winner.items[0] : winner.items;
+      const batchPost = item && Array.isArray(item.batch_posts) ? item.batch_posts[0] : item?.batch_posts;
+      const collection = batchPost && Array.isArray(batchPost.collections) ? batchPost.collections[0] : batchPost?.collections;
+      const winnerComment = Array.isArray(winner.comments) ? winner.comments[0] : winner.comments;
+
+      const buyerName = winnerIntegrityService.normalizeBuyerName((winner.buyer_name as string | null | undefined) ?? null);
+      const buyerId = winnerIntegrityService.normalizeBuyerId((winner.commenter_id as string | null | undefined) ?? (winner.buyer_id as string | null | undefined) ?? null);
       const commentBuyerName = winnerIntegrityService.normalizeBuyerName(
-        winner.winnerComment?.commenterName ?? null,
+        (winnerComment?.commenter_name as string | null | undefined) ?? null,
       );
       const commentBuyerId = winnerIntegrityService.normalizeBuyerId(
-        winner.winnerComment?.commenterId ?? null,
+        (winnerComment?.commenter_id as string | null | undefined) ?? null,
       );
+      const resolvedPriceRaw = winner.resolved_price as number | string | null | undefined;
       const resolvedPrice =
-        typeof winner.resolvedPrice === "object"
-          ? Number(winner.resolvedPrice)
-          : winner.resolvedPrice === null
-            ? null
-            : Number(winner.resolvedPrice);
+        resolvedPriceRaw === null || typeof resolvedPriceRaw === 'undefined'
+          ? null
+          : Number(resolvedPriceRaw);
+      const rawPriceText = (item?.raw_price_text as string | null | undefined) ?? null;
+      const winningClaimWord = (winner.winning_claim_word as string | null | undefined) ?? null;
       const dataIssue = winnerIntegrityService.buildDataIssueReason(
         buyerName ?? commentBuyerName,
         null,
@@ -276,32 +297,32 @@ export class WinnerRepository {
       const pricingIssue = winnerIntegrityService.buildPricingIssueReason(
         resolvedPrice,
         winnerIntegrityService.normalizeClaimWord(
-          winner.winning_claim_word,
+          winningClaimWord,
           { M: "mine", G: "grab", S: "steal" },
         ),
-        winner.item.rawPriceText,
+        rawPriceText,
       );
 
       return {
-        itemId: winner.itemId,
+        itemId: winner.item_id as string,
         buyerId,
         commenterId: buyerId ?? commentBuyerId,
         buyerName: buyerName ?? commentBuyerName,
-        winningClaimWord: winner.winning_claim_word,
+        winningClaimWord,
         resolvedPrice,
-        claimedAt: winner.resolved_at?.toISOString() ?? null,
-        itemNumber: winner.item.itemNumber,
-        thumbnailUrl: winner.item.thumbnailUrl,
-        batchId: winner.item.batchPostId,
-        batchTitle: winner.item.batchPost.title,
-        collectionId: winner.item.batchPost.collectionId,
-        collectionName: winner.item.batchPost.collection.name,
-        collectionStatus: winner.item.batchPost.collection.status ?? "open",
+        claimedAt: (winner.resolved_at as string | null | undefined) ?? null,
+        itemNumber: Number(item?.item_number ?? 0),
+        thumbnailUrl: (item?.thumbnail_url as string | undefined) ?? "",
+        batchId: (item?.batch_post_id as string | undefined) ?? "",
+        batchTitle: (batchPost?.title as string | undefined) ?? "",
+        collectionId: (batchPost?.collection_id as string | undefined) ?? collectionId,
+        collectionName: (collection?.name as string | undefined) ?? "",
+        collectionStatus: (collection?.status as string | undefined) ?? "open",
         commentBuyerName,
         commentBuyerId,
-        pricingSource: winner.pricingSource,
-        needsReview: !!winner.needsReview,
-        reviewReason: winner.reviewReason ?? null,
+        pricingSource: (winner.pricing_source as string | null | undefined) ?? null,
+        needsReview: Boolean(winner.needs_review),
+        reviewReason: (winner.review_reason as string | null | undefined) ?? null,
         dataIssue,
         pricingIssue,
       };
