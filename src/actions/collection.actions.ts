@@ -313,7 +313,10 @@ export async function syncCollectionPosts(collectionId: string) {
 /**
  * Sync Comments and Process Claims for a whole batch
  */
-export async function syncBatchCommentsAction(batchId: string) {
+export async function syncBatchCommentsAction(
+  batchId: string,
+  options?: { deferTotalsRefresh?: boolean },
+) {
   const logPath = getSyncDiagnosticsLogPath();
   
   try {
@@ -608,17 +611,19 @@ export async function syncBatchCommentsAction(batchId: string) {
       });
     }
 
-    // 4. Update Buyer Totals for the whole collection
-    appendFileSync(logPath, `[ACTION] Updating metrics for collection ${collectionId}\n`);
-    const aggregates = await collectionService.getBuyerTotals(collectionId);
-    const tracedAggregate = batch.items
-      .filter((item) => shouldTraceItem(item.id))
-      .map((item) => ({
-        itemId: item.id,
-        buyerTotals: aggregates.filter((buyer) => buyer.items.some((wonItem) => wonItem.itemId === item.id)),
-      }));
-    tracedAggregate.forEach((entry) => appendSyncTrace(`item:${entry.itemId}:buyer_total`, entry.buyerTotals));
-    await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
+    // 4. Update Buyer Totals for the whole collection unless a bulk sync will do it once at the end.
+    if (!options?.deferTotalsRefresh) {
+      appendFileSync(logPath, `[ACTION] Updating metrics for collection ${collectionId}\n`);
+      const aggregates = await collectionService.getBuyerTotals(collectionId);
+      const tracedAggregate = batch.items
+        .filter((item) => shouldTraceItem(item.id))
+        .map((item) => ({
+          itemId: item.id,
+          buyerTotals: aggregates.filter((buyer) => buyer.items.some((wonItem) => wonItem.itemId === item.id)),
+        }));
+      tracedAggregate.forEach((entry) => appendSyncTrace(`item:${entry.itemId}:buyer_total`, entry.buyerTotals));
+      await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
+    }
 
     appendFileSync(logPath, `[ACTION] syncBatchCommentsAction COMPLETE for batch ${batchId}.\n`);
     revalidatePath(`/collections/${collectionId}`);
@@ -1049,7 +1054,7 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
 
     for (const batch of batches) {
       appendFileSync(logPath, `[PIPELINE] Syncing comments for batch ${batch.id} (${batch.title})\n`);
-      const result = await syncBatchCommentsAction(batch.id);
+      const result = await syncBatchCommentsAction(batch.id, { deferTotalsRefresh: true });
       if (result.success) {
         totalWinners += result.winnersCount || 0;
       }
@@ -1057,6 +1062,10 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
       totalCommentsSaved += result.commentsSaved || 0;
       totalCommentUpsertErrors += result.commentUpsertErrors || 0;
     }
+
+    appendFileSync(logPath, `[PIPELINE] Refreshing buyer totals once for collection ${collectionId}\n`);
+    const aggregates = await collectionService.getBuyerTotals(collectionId);
+    await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
 
     revalidatePath(`/collections/${collectionId}`);
     revalidatePath('/buyers');
