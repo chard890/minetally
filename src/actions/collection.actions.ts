@@ -13,7 +13,6 @@ import { AuditLogRepository } from '@/repositories/audit-log.repository';
 import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
 import { winnerIntegrityService } from '@/services/winner-integrity.service';
 import { confirmedWinnerService } from '@/services/confirmed-winner.service';
-import { MetaSyncService } from '@/services/meta/meta-sync.service';
 import { appendSyncDiagnostic, appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { decryptToken } from '@/lib/token-crypto';
 import { revalidatePath } from 'next/cache';
@@ -952,16 +951,8 @@ export async function fullCollectionSyncAction(collectionId: string) {
     
     // Stage 1: Sync Posts and Item Photos
     appendFileSync(logPath, `[PIPELINE] Stage 1: Syncing Posts and Items\n`);
-    const stage1Result = await MetaSyncService.syncCollectionPosts(collectionId);
+    const stage1Result = await syncCollectionPosts(collectionId);
     appendFileSync(logPath, `[PIPELINE] Stage 1 result: ${JSON.stringify(stage1Result)}\n`);
-    if (!stage1Result.success) {
-      return {
-        success: false,
-        error: stage1Result.error ?? 'Failed to sync collection posts.',
-        postsImported: 0,
-        winnersCount: 0,
-      };
-    }
     
     // Stage 2: Get all batches created for this collection
     const batches = await BatchRepository.listByCollection(collectionId);
@@ -981,8 +972,7 @@ export async function fullCollectionSyncAction(collectionId: string) {
     return {
       success: true,
       winnersCount: totalWinners,
-      postsImported: stage1Result.postsImported,
-      error: stage1Result.error,
+      postsImported: batches.length,
     };
   } catch (error) {
     appendFileSync(logPath, `[PIPELINE] fullCollectionSyncAction ERROR: ${getErrorMessage(error)}\n`);
