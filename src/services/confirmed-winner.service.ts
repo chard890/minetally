@@ -1,6 +1,7 @@
 import { ClaimCodeMapping, MetaComment, ParsedComment } from "@/types";
 import { priceService } from "@/services/price.service";
 import { sellerConfirmationService } from "@/services/seller-confirmation.service";
+import { winnerIntegrityService } from "@/services/winner-integrity.service";
 
 type ConfirmedWinnerInput = {
   itemId: string;
@@ -76,7 +77,20 @@ class ConfirmedWinnerService {
 
     const earliestValidConfirmation = validConfirmations[0];
     const conflictingBuyerNames = new Set(
-      validConfirmations.map((entry) => entry.parsed.isValid ? entry.parsed.buyerName.toLowerCase() : ""),
+      validConfirmations
+        .map((entry) => {
+          if (!entry.parsed.isValid) {
+            return "";
+          }
+
+          const explicitBuyerName = winnerIntegrityService.normalizeBuyerName(entry.parsed.buyerName);
+          const parentBuyerName = winnerIntegrityService.normalizeBuyerName(
+            commentsById.get(entry.reply.parentCommentId ?? "")?.from?.name ?? null,
+          );
+
+          return (explicitBuyerName ?? parentBuyerName ?? "").toLowerCase();
+        })
+        .filter((name) => name.length > 0),
     );
 
     let reviewReason: string | null = null;
@@ -94,10 +108,21 @@ class ConfirmedWinnerService {
     }
 
     const parentProvisional = provisionalById.get(earliestValidConfirmation.parentComment?.id ?? "");
+    const explicitBuyerName = earliestValidConfirmation.parsed.isValid
+      ? winnerIntegrityService.normalizeBuyerName(earliestValidConfirmation.parsed.buyerName)
+      : null;
+    const parentBuyerName = winnerIntegrityService.normalizeBuyerName(
+      earliestValidConfirmation.parentComment?.from?.name ?? null,
+    );
+    const fallbackBuyerName = winnerIntegrityService.normalizeBuyerName(parentProvisional?.buyerName ?? null);
+    const normalizedClaimWord = winnerIntegrityService.normalizeClaimWord(
+      parentProvisional?.claimWord ?? null,
+      input.claimCodeMapping,
+    );
     const price = priceService.resolveConfirmedWinnerPrice({
       pictureLevelText: input.pictureLevelPriceText,
       postLevelText: input.postLevelPriceText,
-      claimWord: parentProvisional?.claimWord ?? null,
+      claimWord: normalizedClaimWord,
       claimCodeMapping: input.claimCodeMapping,
     });
 
@@ -111,13 +136,15 @@ class ConfirmedWinnerService {
         parentCommentMetaId: earliestValidConfirmation.parentComment?.id ?? earliestValidConfirmation.reply.parentCommentId ?? "",
         confirmationReplyMetaId: earliestValidConfirmation.reply.id,
         buyerFacebookId: earliestValidConfirmation.parentComment?.from?.id?.trim() || null,
-        buyerName: earliestValidConfirmation.parsed.isValid
-          ? earliestValidConfirmation.parsed.buyerName
-          : "",
+        buyerName:
+          explicitBuyerName
+          ?? parentBuyerName
+          ?? fallbackBuyerName
+          ?? winnerIntegrityService.unknownCommenterPlaceholder,
         buyerCommentMessage: earliestValidConfirmation.parentComment?.message ?? null,
         confirmationMessage: earliestValidConfirmation.reply.message,
         confirmedAt: earliestValidConfirmation.reply.created_time,
-        claimWord: parentProvisional?.claimWord ?? null,
+        claimWord: normalizedClaimWord,
         matchedKeyword: parentProvisional?.matchedKeyword ?? null,
         resolvedPrice: price.resolvedPrice,
         pricingSource: price.pricingSource,
