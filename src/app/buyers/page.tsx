@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/workflow/StatusBadge";
 import { formatClaimWord, formatCurrency, formatDateTime } from "@/lib/format";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { collectionService } from "@/services/collection.service";
+import { BuyerTotalSummary, CollectionListItem } from "@/types";
 
 export default async function BuyersPage({
   searchParams,
@@ -24,14 +25,29 @@ export default async function BuyersPage({
     return <SupabaseConfigGuide />;
   }
 
+  let pageError: string | null = null;
   const resolvedSearchParams = await searchParams;
-  const collections = await collectionService.getCollections();
+  let collections: CollectionListItem[] = [];
+
+  try {
+    collections = await collectionService.getCollections();
+  } catch (error) {
+    pageError = error instanceof Error ? error.message : "Failed to load collections.";
+  }
+
   const selectedCollectionId =
     resolvedSearchParams.collectionId ??
     collections.find((collection) => collection.status === "open")?.id ??
     collections[0]?.id;
     
-  let buyers = selectedCollectionId ? await collectionService.getBuyerTotals(selectedCollectionId) : [];
+  let buyers: BuyerTotalSummary[] = [];
+  if (!pageError && selectedCollectionId) {
+    try {
+      buyers = await collectionService.getBuyerTotals(selectedCollectionId);
+    } catch (error) {
+      pageError = error instanceof Error ? error.message : "Failed to load buyer totals.";
+    }
+  }
   const query = resolvedSearchParams.query?.trim() ?? "";
   const normalizedQuery = query.toLocaleLowerCase();
   
@@ -139,6 +155,11 @@ export default async function BuyersPage({
         <div className="space-y-4 sm:space-y-6 lg:col-span-2">
           <Card className="overflow-hidden border-0">
             <CardContent className="p-0">
+                {pageError ? (
+                  <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 sm:px-6">
+                    Buyer totals could not be loaded: {pageError}
+                  </div>
+                ) : null}
                 <div className="flex flex-col gap-3 border-b border-white/45 p-4 sm:p-6">
                   <BuyerSearchInput initialValue={query} />
                   <div className="flex flex-wrap items-center gap-2">

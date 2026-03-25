@@ -36,9 +36,22 @@ export function CreateCollectionForm({ pages, activePageId }: CreateCollectionFo
         
         if (syncResult.success) {
           setSyncStatus('Sync complete!');
-          setToast({ message: `Collection created and ${syncResult.winnersCount} winners detected!`, type: 'success' });
+          if ((syncResult.postsImported || 0) === 0) {
+            setToast({
+              message: syncResult.error || 'Collection created. No Facebook posts were found in the selected date range.',
+              type: 'info',
+            });
+          } else {
+            setToast({
+              message: `Collection created. Imported ${syncResult.postsImported} posts and detected ${syncResult.winnersCount} winners.`,
+              type: 'success',
+            });
+          }
         } else {
-          setToast({ message: 'Collection created, but automatic sync had issues. You can retry manually.', type: 'error' });
+          setToast({
+            message: syncResult.error || 'Collection created, but automatic sync had issues. You can retry manually.',
+            type: 'error',
+          });
         }
         
         // Small delay to let the toast be seen
