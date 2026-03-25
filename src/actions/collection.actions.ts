@@ -13,7 +13,7 @@ import { AuditLogRepository } from '@/repositories/audit-log.repository';
 import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
 import { winnerIntegrityService } from '@/services/winner-integrity.service';
 import { confirmedWinnerService } from '@/services/confirmed-winner.service';
-import { appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
+import { appendSyncDiagnostic, appendSyncTrace, getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { decryptToken } from '@/lib/token-crypto';
 import { revalidatePath } from 'next/cache';
 import { MetaComment } from '@/types';
@@ -40,6 +40,65 @@ function isTokenErrorMessage(message: string) {
     || normalized.includes('oauth')
     || normalized.includes('permissions error')
     || normalized.includes('invalid oauth');
+}
+
+function extractReferencedItemNumber(message: string, maxItemNumber: number) {
+  const normalized = message.trim().toLowerCase();
+  const patterns = [
+    /(?:^|\s)#\s*(\d{1,3})(?=\s|$)/,
+    /(?:^|\s)item\s*(\d{1,3})(?=\s|$)/,
+    /^(\d{1,3})(?=\s*[a-z#(]|$)/,
+    /(?:^|\s)(\d{1,3})(?=\s+(?:mine|grab|steal|m|g|s)\b)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match) {
+      continue;
+    }
+
+    const itemNumber = Number(match[1]);
+    if (Number.isInteger(itemNumber) && itemNumber >= 1 && itemNumber <= maxItemNumber) {
+      return itemNumber;
+    }
+  }
+
+  return null;
+}
+
+function groupBatchLevelCommentsByItemNumber(
+  comments: MetaComment[],
+  maxItemNumber: number,
+) {
+  const topLevelById = new Map<string, MetaComment>();
+  const repliesByParentId = new Map<string, MetaComment[]>();
+
+  comments.forEach((comment) => {
+    if (comment.parentCommentId) {
+      const replies = repliesByParentId.get(comment.parentCommentId) ?? [];
+      replies.push(comment);
+      repliesByParentId.set(comment.parentCommentId, replies);
+      return;
+    }
+
+    topLevelById.set(comment.id, comment);
+  });
+
+  const grouped = new Map<number, MetaComment[]>();
+
+  topLevelById.forEach((comment) => {
+    const itemNumber = extractReferencedItemNumber(comment.message, maxItemNumber);
+    if (!itemNumber) {
+      return;
+    }
+
+    const thread = [comment, ...(repliesByParentId.get(comment.id) ?? [])];
+    const existing = grouped.get(itemNumber) ?? [];
+    existing.push(...thread);
+    grouped.set(itemNumber, existing);
+  });
+
+  return grouped;
 }
 
 async function markPageNeedsReconnect(pageId: string | null | undefined, errorMessage: string) {
@@ -274,10 +333,18 @@ export async function syncBatchCommentsAction(batchId: string) {
     if (!batch.collection.page) throw new Error('Linked Facebook Page not found');
     
     const accessToken = getStoredPageAccessToken(batch.collection.page.accessToken);
-    if (!accessToken) throw new Error('Facebook Page access token not found');
+    const userAccessToken = getStoredPageAccessToken(batch.collection.page.userAccessToken);
+    const primaryAccessToken = accessToken ?? userAccessToken;
+    if (!primaryAccessToken) throw new Error('Facebook access token not found');
     const collectionId = batch.collectionId;
     const settings = await settingsService.getSettings();
     let totalWinnersDetected = 0;
+    let totalCommentsFetched = 0;
+    let totalCommentsSaved = 0;
+    let totalCommentUpsertErrors = 0;
+    let batchLevelCommentsByItemNumber = new Map<number, MetaComment[]>();
+    let batchLevelCommentsFetched = false;
+    const maxItemNumber = batch.items.reduce((max, item) => Math.max(max, item.itemNumber), 0);
 
     for (const item of batch.items) {
       if (!item.metaMediaId) {
@@ -287,7 +354,7 @@ export async function syncBatchCommentsAction(batchId: string) {
 
       const rawMedia = await backfillRawMediaByBatchPost({
         batchPostId: batch.metaPostId,
-        accessToken,
+        accessToken: primaryAccessToken,
         itemId: item.id,
         metaMediaId: item.metaMediaId,
         currentRawMedia: item.raw_media_json,
@@ -295,21 +362,59 @@ export async function syncBatchCommentsAction(batchId: string) {
       
       appendFileSync(logPath, `[ACTION] Syncing comments for item ${item.id} (media: ${item.metaMediaId})\n`);
       
-      const comments = await metaService.getMediaComments(item.metaMediaId, accessToken, {
+      let comments = await metaService.getMediaComments(item.metaMediaId, primaryAccessToken, {
         pageId: batch.collection.page.metaPageId,
         batchPostId: batch.metaPostId,
         itemId: item.id,
         rawMedia,
       });
-      appendFileSync(logPath, `[ACTION] Item ${item.id}: Fetched ${comments.length} raw comments\n`);
+      if (comments.length === 0 && userAccessToken && userAccessToken !== accessToken) {
+        comments = await metaService.getMediaComments(item.metaMediaId, userAccessToken, {
+          pageId: batch.collection.page.metaPageId,
+          batchPostId: batch.metaPostId,
+          itemId: item.id,
+          rawMedia,
+        });
+      }
+      let effectiveComments = comments;
+
+      if (comments.length === 0 && batch.metaPostId) {
+        if (!batchLevelCommentsFetched) {
+          let batchLevelComments = await metaService.getMediaComments(batch.metaPostId, primaryAccessToken, {
+            pageId: batch.collection.page.metaPageId,
+            batchPostId: batch.metaPostId,
+            itemId: item.id,
+            rawMedia: { sourceKind: 'full_picture_fallback' },
+          });
+          if (batchLevelComments.length === 0 && userAccessToken && userAccessToken !== accessToken) {
+            batchLevelComments = await metaService.getMediaComments(batch.metaPostId, userAccessToken, {
+              pageId: batch.collection.page.metaPageId,
+              batchPostId: batch.metaPostId,
+              itemId: item.id,
+              rawMedia: { sourceKind: 'full_picture_fallback' },
+            });
+          }
+          batchLevelCommentsByItemNumber = groupBatchLevelCommentsByItemNumber(batchLevelComments, maxItemNumber);
+          batchLevelCommentsFetched = true;
+          appendFileSync(
+            logPath,
+            `[ACTION] Batch ${batch.id}: Fetched ${batchLevelComments.length} batch-level comments and mapped ${batchLevelCommentsByItemNumber.size} item threads\n`,
+          );
+        }
+
+        effectiveComments = batchLevelCommentsByItemNumber.get(item.itemNumber) ?? [];
+      }
+
+      appendFileSync(logPath, `[ACTION] Item ${item.id}: Fetched ${effectiveComments.length} raw comments\n`);
+      totalCommentsFetched += effectiveComments.length;
       const traceRawComments = shouldTraceItem(item.id);
       if (traceRawComments) {
-        comments.forEach((comment) => {
+        effectiveComments.forEach((comment) => {
           appendSyncTrace(`item:${item.id}:raw_comment`, comment);
         });
       }
       
-      const topLevelComments = comments.filter((comment) => !comment.parentCommentId);
+      const topLevelComments = effectiveComments.filter((comment) => !comment.parentCommentId);
       appendFileSync(logPath, `[ACTION] Item ${item.id}: Processing ${topLevelComments.length} top-level comments with claimService\n`);
       appendFileSync(logPath, `[DEBUG] Current Settings - Valid: ${JSON.stringify(settings.validClaimKeywords)}, Cancel: ${JSON.stringify(settings.cancelKeywords)}\n`);
       
@@ -319,7 +424,7 @@ export async function syncBatchCommentsAction(batchId: string) {
         itemId: item.id,
         batchPostId: item.batchPostId,
         pageId: batch.collection.page.metaPageId,
-        comments,
+        comments: effectiveComments,
         provisionalComments: processedComments,
         pictureLevelPriceText: item.rawPriceText,
         postLevelPriceText: batch.caption,
@@ -352,7 +457,7 @@ export async function syncBatchCommentsAction(batchId: string) {
       await prisma.$transaction(async (tx: TransactionClient) => {
         // 1. Save all comments
         const commentDbIdByMetaId = new Map<string, string>();
-        for (const rawComment of comments) {
+        for (const rawComment of effectiveComments) {
           if (!rawComment || !rawComment.id) {
              appendFileSync(logPath, `[WARN] Skipping null or invalid comment for item ${item.id}\n`);
              continue;
@@ -391,7 +496,9 @@ export async function syncBatchCommentsAction(batchId: string) {
               select: { id: true, metaCommentId: true },
             });
             commentDbIdByMetaId.set(savedComment.metaCommentId ?? rawComment.id, savedComment.id);
+            totalCommentsSaved++;
           } catch (upsertError) {
+            totalCommentUpsertErrors++;
             appendFileSync(logPath, `[ERROR] Failed to upsert comment ${rawComment.id}: ${getErrorMessage(upsertError)}\n`);
           }
         }
@@ -517,8 +624,36 @@ export async function syncBatchCommentsAction(batchId: string) {
     revalidatePath(`/collections/${collectionId}`);
     revalidatePath(`/collections/${collectionId}/batches/${batchId}`);
     revalidatePath('/buyers');
+
+    if (totalCommentsFetched === 0) {
+      return {
+        success: false,
+        error: 'No Facebook comments were fetched for this batch.',
+        winnersCount: totalWinnersDetected,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
+
+    if (totalCommentsSaved === 0 && totalCommentUpsertErrors > 0) {
+      return {
+        success: false,
+        error: 'Facebook comments were fetched but could not be saved to the database.',
+        winnersCount: totalWinnersDetected,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
     
-    return { success: true, winnersCount: totalWinnersDetected };
+    return {
+      success: true,
+      winnersCount: totalWinnersDetected,
+      commentsFetched: totalCommentsFetched,
+      commentsSaved: totalCommentsSaved,
+      commentUpsertErrors: totalCommentUpsertErrors,
+    };
   } catch (error) {
     let errorMessage = getErrorMessage(error);
     if (isTokenErrorMessage(errorMessage)) {
@@ -833,30 +968,28 @@ export async function finalizeCollection(collectionId: string) {
  * Delete a collection
  */
 export async function deleteCollectionAction(collectionId: string) {
-  const logPath = 'K:\\Antigravity Projects\\Dayan App\\tmp\\delete-error.log';
-  
   try {
-    const startMsg = `[${new Date().toISOString()}] [deleteCollectionAction] START: ${collectionId}\n`;
-    appendFileSync(logPath, startMsg);
-    
+    appendSyncDiagnostic(`[${new Date().toISOString()}] [deleteCollectionAction] START: ${collectionId}\n`);
+
     if (!collectionService) {
-      appendFileSync(logPath, `[ERROR] collectionService is UNDEFINED\n`);
+      appendSyncDiagnostic('[deleteCollectionAction] collectionService is UNDEFINED\n');
       return { success: false, error: 'collectionService is undefined' };
     }
 
-    const success = await collectionService.deleteCollection(collectionId);
-    appendFileSync(logPath, `[DEBUG] collectionService.deleteCollection result: ${success}\n`);
-    
-    if (success) {
+    const result = await collectionService.deleteCollection(collectionId);
+    appendSyncDiagnostic(`[deleteCollectionAction] collectionService.deleteCollection result: ${JSON.stringify(result)}\n`);
+
+    if (result.success) {
       revalidatePath('/collections');
       return { success: true };
     }
-    return { success: false, error: 'Database delete failed' };
+    return { success: false, error: result.error ?? 'Database delete failed' };
   } catch (error) {
-    const errorMsg = `[${new Date().toISOString()}] [deleteCollectionAction] EXCEPTION: ${getErrorMessage(error)}\n${getErrorStack(error)}\n\n`;
-    appendFileSync(logPath, errorMsg);
+    appendSyncDiagnostic(
+      `[${new Date().toISOString()}] [deleteCollectionAction] EXCEPTION: ${getErrorMessage(error)}\n${getErrorStack(error)}\n\n`
+    );
     console.error('[deleteCollectionAction] ERROR:', error);
-    throw error;
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 /**
@@ -870,7 +1003,8 @@ export async function fullCollectionSyncAction(collectionId: string) {
     
     // Stage 1: Sync Posts and Item Photos
     appendFileSync(logPath, `[PIPELINE] Stage 1: Syncing Posts and Items\n`);
-    await syncCollectionPosts(collectionId);
+    const stage1Result = await syncCollectionPosts(collectionId);
+    appendFileSync(logPath, `[PIPELINE] Stage 1 result: ${JSON.stringify(stage1Result)}\n`);
     
     // Stage 2: Get all batches created for this collection
     const batches = await BatchRepository.listByCollection(collectionId);
@@ -887,11 +1021,15 @@ export async function fullCollectionSyncAction(collectionId: string) {
     }
     
     appendFileSync(logPath, `[PIPELINE] fullCollectionSyncAction COMPLETE. Total winners detected: ${totalWinners}\n`);
-    return { success: true, winnersCount: totalWinners };
+    return {
+      success: true,
+      winnersCount: totalWinners,
+      postsImported: batches.length,
+    };
   } catch (error) {
     appendFileSync(logPath, `[PIPELINE] fullCollectionSyncAction ERROR: ${getErrorMessage(error)}\n`);
     console.error('Error in fullCollectionSyncAction:', error);
-    return { success: false, error: getErrorMessage(error) };
+    return { success: false, error: getErrorMessage(error), postsImported: 0, winnersCount: 0 };
   }
 }
 
@@ -905,6 +1043,9 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
     appendFileSync(logPath, `[PIPELINE] Found ${batches.length} batches to sync comments for collection ${collectionId}\n`);
 
     let totalWinners = 0;
+    let totalCommentsFetched = 0;
+    let totalCommentsSaved = 0;
+    let totalCommentUpsertErrors = 0;
 
     for (const batch of batches) {
       appendFileSync(logPath, `[PIPELINE] Syncing comments for batch ${batch.id} (${batch.title})\n`);
@@ -912,13 +1053,47 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
       if (result.success) {
         totalWinners += result.winnersCount || 0;
       }
+      totalCommentsFetched += result.commentsFetched || 0;
+      totalCommentsSaved += result.commentsSaved || 0;
+      totalCommentUpsertErrors += result.commentUpsertErrors || 0;
     }
 
     revalidatePath(`/collections/${collectionId}`);
     revalidatePath('/buyers');
 
     appendFileSync(logPath, `[PIPELINE] syncAllCollectionBatchCommentsAction COMPLETE. Total winners detected: ${totalWinners}\n`);
-    return { success: true, batchesSynced: batches.length, winnersCount: totalWinners };
+    if (totalCommentsFetched === 0) {
+      return {
+        success: false,
+        error: 'No Facebook comments were fetched for any batch in this collection.',
+        batchesSynced: batches.length,
+        winnersCount: totalWinners,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
+
+    if (totalCommentsSaved === 0 && totalCommentUpsertErrors > 0) {
+      return {
+        success: false,
+        error: 'Facebook comments were fetched but could not be saved to the database.',
+        batchesSynced: batches.length,
+        winnersCount: totalWinners,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
+
+    return {
+      success: true,
+      batchesSynced: batches.length,
+      winnersCount: totalWinners,
+      commentsFetched: totalCommentsFetched,
+      commentsSaved: totalCommentsSaved,
+      commentUpsertErrors: totalCommentUpsertErrors,
+    };
   } catch (error) {
     appendFileSync(logPath, `[PIPELINE] syncAllCollectionBatchCommentsAction ERROR: ${getErrorMessage(error)}\n`);
     console.error('Error syncing all collection batch comments:', error);

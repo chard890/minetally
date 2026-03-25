@@ -35,7 +35,7 @@ export function SyncAllBatchCommentsButton({ collectionId }: SyncAllBatchComment
         }
 
         setToast({
-          message: `Synced ${result.batchesSynced} batches and detected ${result.winnersCount} winners.`,
+          message: `Synced ${result.batchesSynced} batches, fetched ${result.commentsFetched ?? 0} comments, saved ${result.commentsSaved ?? 0}, and detected ${result.winnersCount} winners.`,
           type: 'success',
         });
       } catch (error) {

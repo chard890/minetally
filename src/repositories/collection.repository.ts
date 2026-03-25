@@ -63,6 +63,7 @@ type CollectionDetailItemRow = {
 
 type CollectionDetailBatchRow = {
   id: string;
+  collection_id?: string;
   title: string;
   posted_at: string;
   meta_post_id?: string | null;
@@ -74,6 +75,18 @@ type CollectionDetailBatchRow = {
   total_claimed_items?: number;
   total_needs_review?: number;
   items?: CollectionDetailItemRow[];
+};
+
+type FlatItemRow = CollectionDetailItemRow & {
+  batch_post_id: string;
+};
+
+type FlatCommentRow = CollectionDetailCommentRow & {
+  item_id: string;
+};
+
+type FlatWinnerRow = CollectionDetailWinnerRow & {
+  item_id: string;
 };
 
 type CollectionDetailRow = CollectionListRow & {
@@ -235,14 +248,6 @@ export class CollectionRepository {
         *,
         facebook_pages!inner (
           page_name
-        ),
-        batch_posts (
-          *,
-          items (
-            *,
-            comments (*),
-            item_winners (*)
-          )
         )
       `)
       .eq('id', id)
@@ -257,9 +262,97 @@ export class CollectionRepository {
     if (!data) return null;
     const detail = data as CollectionDetailRow;
 
+    const { data: batchData, error: batchError } = await getServiceSupabase()
+      .from('batch_posts')
+      .select('*')
+      .eq('collection_id', id)
+      .order('posted_at', { ascending: false });
+
+    if (batchError) {
+      console.error('Error fetching collection batches:', batchError);
+      return null;
+    }
+
+    const batchRows = (batchData ?? []) as CollectionDetailBatchRow[];
+    const batchIds = batchRows.map((batch) => batch.id);
+
+    const itemRows: FlatItemRow[] = [];
+    const commentRows: FlatCommentRow[] = [];
+    const winnerRows: FlatWinnerRow[] = [];
+
+    if (batchIds.length > 0) {
+      const { data: itemData, error: itemError } = await getServiceSupabase()
+        .from('items')
+        .select('*')
+        .in('batch_post_id', batchIds)
+        .order('item_number', { ascending: true });
+
+      if (itemError) {
+        console.error('Error fetching collection items:', itemError);
+        return null;
+      }
+
+      itemRows.push(...((itemData ?? []) as FlatItemRow[]));
+      const itemIds = itemRows.map((item) => item.id);
+
+      if (itemIds.length > 0) {
+        const [{ data: commentsData, error: commentsError }, { data: winnersData, error: winnersError }] = await Promise.all([
+          getServiceSupabase()
+            .from('comments')
+            .select('*')
+            .in('item_id', itemIds)
+            .order('commented_at', { ascending: true }),
+          getServiceSupabase()
+            .from('item_winners')
+            .select('*')
+            .in('item_id', itemIds)
+            .order('resolved_at', { ascending: false }),
+        ]);
+
+        if (commentsError) {
+          console.error('Error fetching collection comments:', commentsError);
+          return null;
+        }
+
+        if (winnersError) {
+          console.error('Error fetching collection winners:', winnersError);
+          return null;
+        }
+
+        commentRows.push(...((commentsData ?? []) as FlatCommentRow[]));
+        winnerRows.push(...((winnersData ?? []) as FlatWinnerRow[]));
+      }
+    }
+
+    const commentsByItemId = new Map<string, FlatCommentRow[]>();
+    for (const comment of commentRows) {
+      const current = commentsByItemId.get(comment.item_id) ?? [];
+      current.push(comment);
+      commentsByItemId.set(comment.item_id, current);
+    }
+
+    const winnersByItemId = new Map<string, FlatWinnerRow[]>();
+    for (const winner of winnerRows) {
+      const current = winnersByItemId.get(winner.item_id) ?? [];
+      current.push(winner);
+      winnersByItemId.set(winner.item_id, current);
+    }
+
+    const itemsByBatchId = new Map<string, CollectionDetailItemRow[]>();
+    for (const item of itemRows) {
+      const current = itemsByBatchId.get(item.batch_post_id) ?? [];
+      current.push({
+        ...item,
+        comments: commentsByItemId.get(item.id) ?? [],
+        item_winners: winnersByItemId.get(item.id) ?? [],
+      });
+      itemsByBatchId.set(item.batch_post_id, current);
+    }
+
     // Mapping logic to reconstruct the detailed object
-    const batches = (detail.batch_posts || []).map((batch) => {
-      const items = (Array.isArray(batch.items) ? batch.items : []).map((item) => {
+    const batches = batchRows.map((batch) => {
+      const batchItems = itemsByBatchId.get(batch.id) ?? [];
+      const items = batchItems.map((item) => {
         const effectiveStatus = deriveItemStatus(item);
 
         return {
@@ -509,23 +602,29 @@ export class CollectionRepository {
     });
   }
 
-  static async deleteCollection(id: string): Promise<boolean> {
-    const ownedPageIds = await this.getOwnedPageIds();
-    if (ownedPageIds.length === 0) {
-      return false;
+  static async deleteCollection(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const ownedPageIds = await this.getOwnedPageIds();
+      if (ownedPageIds.length === 0) {
+        return { success: false, error: 'No connected Facebook pages are available for this account.' };
+      }
+
+      const { error } = await getServiceSupabase()
+        .from('collections')
+        .delete()
+        .eq('id', id)
+        .in('page_id', ownedPageIds);
+
+      if (error) {
+        console.error('Error deleting collection:', error);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Unexpected error deleting collection:', error);
+      return { success: false, error: message };
     }
-
-    const { error } = await getServiceSupabase()
-      .from('collections')
-      .delete()
-      .eq('id', id)
-      .in('page_id', ownedPageIds);
-
-    if (error) {
-      console.error('Error deleting collection:', error);
-      return false;
-    }
-
-    return true;
   }
 }

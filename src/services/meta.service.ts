@@ -10,6 +10,15 @@ type GraphResponse<T> = {
   };
 };
 
+type GraphObjectResponse<T> = {
+  comments?: {
+    data?: T[];
+  };
+  error?: {
+    message?: string;
+  };
+};
+
 type MetaAttachment = {
   id?: string;
   description?: string;
@@ -308,28 +317,45 @@ export class MetaService {
     accessToken: string,
     pageId: string | null,
   ) {
-    const endpoint =
-      `${this.baseUrl}/${candidate.objectId}/comments?fields=${encodeURIComponent(COMMENT_FIELDS)}&order=chronological&access_token=${encodeURIComponent(accessToken)}`;
-
     try {
-      const response = await fetch(endpoint);
-      const payload = await response.json() as GraphResponse<MetaCommentPayload>;
-      const comments = this.flattenComments(this.normalizeCommentPayloadArray(payload.data), pageId);
+      const edgeEndpoint =
+        `${this.baseUrl}/${candidate.objectId}/comments?fields=${encodeURIComponent(COMMENT_FIELDS)}&order=chronological&access_token=${encodeURIComponent(accessToken)}`;
+      const fieldEndpoint =
+        `${this.baseUrl}/${candidate.objectId}?fields=${encodeURIComponent(`comments.order(chronological){${COMMENT_FIELDS}}`)}&access_token=${encodeURIComponent(accessToken)}`;
+
+      const [edgeResponse, fieldResponse] = await Promise.all([
+        fetch(edgeEndpoint),
+        fetch(fieldEndpoint),
+      ]);
+      const edgePayload = await edgeResponse.json() as GraphResponse<MetaCommentPayload>;
+      const fieldPayload = await fieldResponse.json() as GraphObjectResponse<MetaCommentPayload>;
+
+      const edgeComments = this.flattenComments(this.normalizeCommentPayloadArray(edgePayload.data), pageId);
+      const fieldComments = this.flattenComments(
+        this.normalizeCommentPayloadArray(fieldPayload.comments?.data),
+        pageId,
+      );
+      const comments = fieldComments.length > edgeComments.length ? fieldComments : edgeComments;
+      const selectedEndpoint = fieldComments.length > edgeComments.length ? fieldEndpoint : edgeEndpoint;
+      const selectedError =
+        fieldComments.length > edgeComments.length
+          ? (fieldResponse.ok ? null : fieldPayload.error?.message || fieldResponse.statusText)
+          : (edgeResponse.ok ? null : edgePayload.error?.message || edgeResponse.statusText);
 
       return {
         candidate,
-        endpoint: sanitizeGraphEndpoint(endpoint),
+        endpoint: sanitizeGraphEndpoint(selectedEndpoint),
         comments,
         commentsWithAuthorName: comments.filter((comment) => Boolean(comment.from?.name?.trim())).length,
         commentsWithoutFrom: comments.filter((comment) => !comment.from).length,
         commentsWithoutAuthorId: comments.filter((comment) => !comment.from?.id?.trim()).length,
         commentsWithoutAuthorName: comments.filter((comment) => !comment.from?.name?.trim()).length,
-        error: response.ok ? null : payload.error?.message || response.statusText,
+        error: selectedError,
       };
     } catch (error) {
       return {
         candidate,
-        endpoint: sanitizeGraphEndpoint(endpoint),
+        endpoint: sanitizeGraphEndpoint(`${this.baseUrl}/${candidate.objectId}/comments?fields=${encodeURIComponent(COMMENT_FIELDS)}&order=chronological&access_token=${encodeURIComponent(accessToken)}`),
         comments: [],
         commentsWithAuthorName: 0,
         commentsWithoutFrom: 0,
