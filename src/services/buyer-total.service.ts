@@ -3,6 +3,8 @@ import { WinnerAggregationRow } from "@/repositories/winner.repository";
 import { BuyerTotalSummary, CollectionWorkflowDetail } from "@/types";
 import { winnerIntegrityService } from "@/services/winner-integrity.service";
 
+const PRICE_REVIEW_REASON = "Price could not be resolved for the confirmed winner.";
+
 class BuyerTotalService {
   public aggregateBuyers(collection: CollectionWorkflowDetail): BuyerTotalSummary[] {
     const buyers = new Map<string, BuyerTotalSummary>();
@@ -13,7 +15,7 @@ class BuyerTotalService {
         const buyerId = winnerIntegrityService.normalizeBuyerId(item.winner?.buyerId ?? null);
         const resolvedPrice = typeof item.resolvedPrice === "number" ? item.resolvedPrice : null;
 
-        if (!item.winner || !buyerName || resolvedPrice === null) {
+        if (!item.winner || !buyerName) {
           continue;
         }
 
@@ -30,7 +32,7 @@ class BuyerTotalService {
         };
 
         currentBuyer.totalWonItems += 1;
-        currentBuyer.totalAmount += resolvedPrice;
+        currentBuyer.totalAmount += resolvedPrice ?? 0;
         currentBuyer.items.push({
           itemId: item.id,
           itemNumber: item.itemNumber,
@@ -59,7 +61,12 @@ class BuyerTotalService {
     const buyers = new Map<string, BuyerTotalSummary>();
 
     for (const row of rows) {
-      if (row.needsReview) {
+      const priceOnlyReview =
+        row.needsReview
+        && row.reviewReason === PRICE_REVIEW_REASON
+        && !row.dataIssue;
+
+      if (row.needsReview && !priceOnlyReview) {
         continue;
       }
 
@@ -76,9 +83,8 @@ class BuyerTotalService {
 
       if (resolvedPrice === null) {
         appendSyncDiagnostic(
-          `[PRICING_ISSUE] Item ${row.itemId}: Winner row skipped from Buyer Totals because resolved_price is missing.\n`,
+          `[PRICING_ISSUE] Item ${row.itemId}: Buyer Totals includes winner with pending price because resolved_price is missing.\n`,
         );
-        continue;
       }
 
       const key = buyerName.toLowerCase();
@@ -94,7 +100,7 @@ class BuyerTotalService {
       };
 
       currentBuyer.totalWonItems += 1;
-      currentBuyer.totalAmount += resolvedPrice;
+      currentBuyer.totalAmount += resolvedPrice ?? 0;
       currentBuyer.items.push({
         itemId: row.itemId,
         itemNumber: row.itemNumber,
