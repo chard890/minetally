@@ -4,6 +4,8 @@ import {
   DashboardSnapshot,
   WinnerSummary,
 } from "@/types";
+import { unstable_cache } from "next/cache";
+import { dataCacheTags } from "@/lib/data-cache";
 import { buyerTotalService } from "@/services/buyer-total.service";
 import { finalizationService } from "@/services/finalization.service";
 import { CollectionRepository } from "@/repositories/collection.repository";
@@ -36,6 +38,65 @@ function buildWinnerSummary(
   return `First valid claimant is ${winner.buyerName}.`;
 }
 
+function getCachedWinnerAggregationRows(collectionId: string) {
+  return unstable_cache(
+    async () => WinnerRepository.listAggregationRows(collectionId),
+    ["winner-aggregation-rows", collectionId],
+    {
+      tags: [dataCacheTags.winnerAggregationRows(collectionId)],
+    },
+  )();
+}
+
+function getCachedBuyerTotals(collectionId: string) {
+  return unstable_cache(
+    async () => {
+      try {
+        const rows = await getCachedWinnerAggregationRows(collectionId);
+        if (rows.length > 0) {
+          return buyerTotalService.aggregateRows(rows);
+        }
+
+        const collection = await CollectionRepository.getCollectionDetail(collectionId);
+        if (collection) {
+          return buyerTotalService.aggregateBuyers(collection);
+        }
+
+        return [];
+      } catch (error) {
+        console.error(`[CollectionService] Failed to load buyer totals for collection ${collectionId}:`, error);
+        try {
+          const collection = await CollectionRepository.getCollectionDetail(collectionId);
+          return collection ? buyerTotalService.aggregateBuyers(collection) : [];
+        } catch (fallbackError) {
+          console.error(
+            `[CollectionService] Fallback buyer totals also failed for collection ${collectionId}:`,
+            fallbackError,
+          );
+          return [];
+        }
+      }
+    },
+    ["buyer-totals", collectionId],
+    {
+      tags: [
+        dataCacheTags.buyerTotals(collectionId),
+        dataCacheTags.winnerAggregationRows(collectionId),
+      ],
+    },
+  )();
+}
+
+function getCachedItemDetail(collectionId: string, itemId: string) {
+  return unstable_cache(
+    async () => CollectionRepository.getItemDetail(collectionId, itemId),
+    ["item-detail", collectionId, itemId],
+    {
+      tags: [dataCacheTags.itemDetail(itemId)],
+    },
+  )();
+}
+
 class CollectionService {
   /**
    * Refreshes the local store is no longer needed with Supabase, 
@@ -60,38 +121,11 @@ class CollectionService {
   }
 
   public async getItem(collectionId: string, itemId: string) {
-    const collection = await this.getCollection(collectionId);
-    return collection?.batches
-      .flatMap((batch) => batch.items)
-      .find((item) => item.id === itemId);
+    return await getCachedItemDetail(collectionId, itemId);
   }
 
   public async getBuyerTotals(collectionId: string): Promise<ReturnType<typeof buyerTotalService.aggregateRows>> {
-    try {
-      const rows = await WinnerRepository.listAggregationRows(collectionId);
-      if (rows.length > 0) {
-        return buyerTotalService.aggregateRows(rows);
-      }
-
-      const collection = await this.getCollection(collectionId);
-      if (collection) {
-        return buyerTotalService.aggregateBuyers(collection);
-      }
-
-      return [];
-    } catch (error) {
-      console.error(`[CollectionService] Failed to load buyer totals for collection ${collectionId}:`, error);
-      try {
-        const collection = await this.getCollection(collectionId);
-        return collection ? buyerTotalService.aggregateBuyers(collection) : [];
-      } catch (fallbackError) {
-        console.error(
-          `[CollectionService] Fallback buyer totals also failed for collection ${collectionId}:`,
-          fallbackError,
-        );
-        return [];
-      }
-    }
+    return await getCachedBuyerTotals(collectionId);
   }
 
   public async getBuyerDetail(collectionId: string, buyerId: string) {

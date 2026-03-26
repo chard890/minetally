@@ -2,7 +2,7 @@ import { appendFileSync } from 'node:fs';
 import { getServiceSupabase } from '@/lib/supabase';
 import { getSyncDiagnosticsLogPath } from '@/lib/sync-diagnostics';
 import { FacebookPageRepository } from '@/repositories/facebook-page.repository';
-import { BatchSyncStatus, ClaimWord, CollectionListItem, CollectionStatus, CollectionWorkflowDetail, ItemStatus, PriceReviewStatus } from '@/types';
+import { BatchSyncStatus, ClaimWord, CollectionListItem, CollectionStatus, CollectionWorkflowDetail, ItemStatus, ItemWorkflowDetail, PriceReviewStatus } from '@/types';
 
 type CollectionListRow = {
   id: string;
@@ -178,6 +178,66 @@ function deriveItemStatus(item: CollectionDetailItemRow): ItemStatus {
   }
 
   return item.status;
+}
+
+function mapItemDetailRow(
+  item: CollectionDetailItemRow,
+  batch: Pick<CollectionDetailBatchRow, 'id' | 'title' | 'meta_post_id'>,
+): ItemWorkflowDetail {
+  const effectiveStatus = deriveItemStatus(item);
+
+  return {
+    id: item.id,
+    itemNumber: item.item_number,
+    title: item.title || `Item #${item.item_number}`,
+    imageUrl: item.image_url,
+    thumbnailUrl: item.thumbnail_url,
+    photoId: item.meta_media_id,
+    sizeLabel: item.size_label ?? undefined,
+    status: effectiveStatus,
+    sourceBatchPostId: batch.id,
+    sourceBatchTitle: batch.title,
+    sourcePostUrl: batch.meta_post_id ? `https://facebook.com/${batch.meta_post_id}` : '',
+    priceReviewStatus: normalizePriceReviewStatus(item.price_review_status, item.needs_price_review),
+    claimStatus: item.claim_status ?? effectiveStatus,
+    rawPriceText: item.raw_price_text,
+    priceMap: item.price_map || {},
+    needsPriceReview:
+      item.needs_price_review ?? normalizePriceReviewStatus(item.price_review_status, item.needs_price_review) === 'needs_review',
+    winner: item.item_winners?.[0]
+      ? {
+          buyerId: item.item_winners[0].buyer_id,
+          buyerName: item.item_winners[0].buyer_name,
+          timestamp: item.item_winners[0].resolved_at,
+          claimWord: normalizeClaimWord(item.item_winners[0].winning_claim_word) || 'mine',
+          source: item.item_winners[0].is_manual_override ? 'manual' as const : 'auto' as const,
+        }
+      : null,
+    winningClaimWord: normalizeClaimWord(item.item_winners?.[0]?.winning_claim_word) || null,
+    resolvedPrice:
+      item.item_winners?.[0] && item.item_winners[0].resolved_price !== null
+        ? Number(item.item_winners[0].resolved_price)
+        : null,
+    commentCount: item.comments?.length || 0,
+    hasManualOverride: !!item.item_winners?.[0]?.is_manual_override || effectiveStatus === 'manual_override',
+    cancelCount: (item.comments || []).filter((comment) => comment.is_cancel_comment).length,
+    comments: (item.comments || []).map((comment) => ({
+      id: comment.id,
+      buyerId: comment.commenter_id,
+      buyerName: comment.commenter_name,
+      message: comment.comment_text,
+      timestamp: comment.commented_at,
+      normalizedText: comment.normalized_text,
+      isValidClaim: comment.is_valid_claim,
+      isCancelComment: comment.is_cancel_comment,
+      tags: [
+        ...(comment.is_valid_claim ? ['valid claim'] as const : []),
+        ...(comment.is_first_claimant ? ['first claimant'] as const : []),
+        ...(comment.is_late_claim ? ['late claim'] as const : []),
+        ...(comment.is_cancel_comment ? ['cancel comment'] as const : []),
+      ],
+    })),
+  };
 }
 
 export class CollectionRepository {
@@ -356,59 +416,7 @@ export class CollectionRepository {
     // Mapping logic to reconstruct the detailed object
     const batches = batchRows.map((batch) => {
       const batchItems = itemsByBatchId.get(batch.id) ?? [];
-      const items = batchItems.map((item) => {
-        const effectiveStatus = deriveItemStatus(item);
-
-        return {
-          id: item.id,
-          itemNumber: item.item_number,
-          title: item.title || `Item #${item.item_number}`,
-          imageUrl: item.image_url,
-          thumbnailUrl: item.thumbnail_url,
-          photoId: item.meta_media_id,
-          sizeLabel: item.size_label ?? undefined,
-          status: effectiveStatus,
-          sourceBatchPostId: batch.id,
-          sourceBatchTitle: batch.title,
-          sourcePostUrl: batch.meta_post_id ? `https://facebook.com/${batch.meta_post_id}` : '',
-          priceReviewStatus: normalizePriceReviewStatus(item.price_review_status, item.needs_price_review),
-          claimStatus: item.claim_status ?? effectiveStatus,
-          rawPriceText: item.raw_price_text,
-          priceMap: item.price_map || {},
-          needsPriceReview: item.needs_price_review ?? normalizePriceReviewStatus(item.price_review_status, item.needs_price_review) === 'needs_review',
-          winner: item.item_winners?.[0] ? {
-            buyerId: item.item_winners[0].buyer_id,
-            buyerName: item.item_winners[0].buyer_name,
-            timestamp: item.item_winners[0].resolved_at,
-            claimWord: normalizeClaimWord(item.item_winners[0].winning_claim_word) || 'mine',
-            source: item.item_winners[0].is_manual_override ? 'manual' as const : 'auto' as const
-          } : null,
-          winningClaimWord: normalizeClaimWord(item.item_winners?.[0]?.winning_claim_word) || null,
-          resolvedPrice:
-            item.item_winners?.[0] && item.item_winners[0].resolved_price !== null
-              ? Number(item.item_winners[0].resolved_price)
-              : null,
-          commentCount: item.comments?.length || 0,
-          hasManualOverride: !!item.item_winners?.[0]?.is_manual_override || effectiveStatus === 'manual_override',
-          cancelCount: (item.comments || []).filter((comment) => comment.is_cancel_comment).length,
-          comments: (item.comments || []).map((comment) => ({
-            id: comment.id,
-            buyerId: comment.commenter_id,
-            buyerName: comment.commenter_name,
-            message: comment.comment_text,
-            timestamp: comment.commented_at,
-            normalizedText: comment.normalized_text,
-            isValidClaim: comment.is_valid_claim,
-            isCancelComment: comment.is_cancel_comment,
-            tags: [
-              ...(comment.is_valid_claim ? ['valid claim'] as const : []),
-              ...(comment.is_first_claimant ? ['first claimant'] as const : []),
-              ...(comment.is_late_claim ? ['late claim'] as const : []),
-              ...(comment.is_cancel_comment ? ['cancel comment'] as const : []),
-            ]
-          }))
-        };
-      });
+      const items = batchItems.map((item) => mapItemDetailRow(item, batch));
 
       const claimedItems = items.filter((item) =>
         item.status === 'claimed' || item.status === 'manual_override' || item.status === 'locked'
@@ -453,6 +461,46 @@ export class CollectionRepository {
       sync_error: detail.sync_error,
       batches
     };
+  }
+
+  static async getItemDetail(collectionId: string, itemId: string): Promise<ItemWorkflowDetail | null> {
+    const collection = await this.getCollectionById(collectionId);
+    if (!collection) {
+      return null;
+    }
+
+    const { data, error } = await getServiceSupabase()
+      .from('items')
+      .select(`
+        *,
+        comments (*),
+        item_winners (*),
+        batch_posts!inner (
+          id,
+          title,
+          meta_post_id,
+          collection_id
+        )
+      `)
+      .eq('id', itemId)
+      .eq('batch_posts.collection_id', collectionId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching item detail:', error);
+      return null;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    const batch = Array.isArray(data.batch_posts) ? data.batch_posts[0] : data.batch_posts;
+    if (!batch) {
+      return null;
+    }
+
+    return mapItemDetailRow(data as CollectionDetailItemRow, batch as Pick<CollectionDetailBatchRow, 'id' | 'title' | 'meta_post_id'>);
   }
 
   static async createCollection(collection: Partial<CollectionWorkflowDetail> & { page_id?: string }): Promise<{ id?: string, error?: string }> {
