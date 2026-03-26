@@ -257,7 +257,7 @@ export class WinnerRepository {
             )
           )
         ),
-        comments (
+        comments!item_winners_winner_comment_id_fkey (
           commenter_id,
           commenter_name
         )
