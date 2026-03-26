@@ -125,10 +125,13 @@ export default async function BuyersPage({
             <Printer className="mr-2 h-4 w-4" />
             Print All
           </Button>
-          <Button variant="outline" className="w-full sm:w-auto">
-            <Download className="mr-2 h-4 w-4" />
-            Export CSV
-          </Button>
+          <form action="/api/buyers/export" method="get" className="w-full sm:w-auto">
+            <input type="hidden" name="collectionId" value={selectedCollectionId ?? ""} />
+            <Button variant="outline" className="w-full sm:w-auto" type="submit">
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </form>
         </div>
       </div>
 
