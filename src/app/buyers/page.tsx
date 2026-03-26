@@ -129,7 +129,7 @@ export default async function BuyersPage({
             <input type="hidden" name="collectionId" value={selectedCollectionId ?? ""} />
             <Button variant="outline" className="w-full sm:w-auto" type="submit">
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           </form>
         </div>
