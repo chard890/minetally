@@ -115,6 +115,8 @@ class CollectionService {
                 claimedAt: item.winner!.timestamp,
                 resolvedPrice: item.resolvedPrice,
                 thumbnailUrl: item.thumbnailUrl,
+                status: item.status,
+                needsPriceReview: item.needsPriceReview,
               })),
           )
           .sort(

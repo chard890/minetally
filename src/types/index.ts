@@ -280,6 +280,8 @@ export interface RecentWinningClaim {
   claimedAt: string;
   resolvedPrice: number | null;
   thumbnailUrl: string;
+  status: ItemStatus;
+  needsPriceReview: boolean;
 }
 
 export interface DashboardSnapshot {

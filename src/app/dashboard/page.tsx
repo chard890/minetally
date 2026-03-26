@@ -28,6 +28,22 @@ function getInitials(name: string) {
     .join("");
 }
 
+function getRecentClaimStatusLabel(claim: RecentWinningClaim) {
+  if (claim.status === "needs_review") {
+    return "Needs review";
+  }
+
+  if (claim.status === "manual_override") {
+    return "Manual winner";
+  }
+
+  if (claim.status === "locked") {
+    return "Locked winner";
+  }
+
+  return "Confirmed winning";
+}
+
 export default async function DashboardPage() {
   if (!isSupabaseConfigured()) {
     return <SupabaseConfigGuide />;
@@ -209,7 +225,10 @@ export default async function DashboardPage() {
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="text-sm font-semibold leading-none text-slate-900">
-                            {formatCurrency(claim.resolvedPrice)}
+                            {getRecentClaimStatusLabel(claim)}
+                          </p>
+                          <p className="mt-1 text-[11px] leading-none text-slate-500">
+                            {claim.resolvedPrice === null ? "Price pending" : formatCurrency(claim.resolvedPrice)}
                           </p>
                           <p className="mt-1 hidden text-[10px] font-semibold uppercase tracking-[0.2em] leading-none text-slate-400 sm:block">
                             {formatDateTime(claim.claimedAt)}
