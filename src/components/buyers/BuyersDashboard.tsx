@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Download, ExternalLink, X } from "lucide-react";
+import { ChevronRight, Download, ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
@@ -43,6 +43,24 @@ export function BuyersDashboard({
 
     return () => {
       document.body.style.overflow = "";
+    };
+  }, [isDrawerOpen]);
+
+  useEffect(() => {
+    if (!isDrawerOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsDrawerOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isDrawerOpen]);
 
@@ -221,6 +239,7 @@ export function BuyersDashboard({
                             onClick={() => handleOpenDrawer(buyer.buyerId)}
                           >
                             View Items
+                            <ChevronRight className="ml-1 h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </div>
@@ -263,7 +282,7 @@ export function BuyersDashboard({
 
       <div
         className={cn(
-          "fixed inset-0 z-40 bg-[#2b2b2b]/35 transition-opacity duration-200 lg:hidden",
+          "fixed inset-0 z-[70] bg-[#2b2b2b]/35 transition-opacity duration-200 lg:hidden",
           isDrawerOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
         )}
         onClick={() => setIsDrawerOpen(false)}
@@ -271,13 +290,15 @@ export function BuyersDashboard({
       />
       <aside
         className={cn(
-          "fixed inset-y-0 right-0 z-50 w-full max-w-md transform border-l border-white/45 bg-[#f6f1ea] shadow-[-18px_0_40px_rgba(43,43,43,0.18)] transition-transform duration-300 ease-out lg:hidden",
+          "fixed inset-y-0 right-0 z-[80] w-full max-w-md transform border-l border-white/45 bg-[#f6f1ea] shadow-[-18px_0_40px_rgba(43,43,43,0.18)] transition-transform duration-300 ease-out lg:hidden",
           isDrawerOpen ? "translate-x-0" : "translate-x-full",
         )}
+        role="dialog"
+        aria-modal="true"
         aria-hidden={!isDrawerOpen}
       >
         <div className="flex h-full flex-col">
-          <div className="bg-[linear-gradient(135deg,rgba(255,142,110,0.96),rgba(183,156,245,0.96))] px-4 py-5 text-white">
+          <div className="bg-[linear-gradient(135deg,rgba(255,142,110,0.96),rgba(183,156,245,0.96))] px-4 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-white">
             <div className="flex items-start justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20 text-base font-bold text-white">
@@ -304,7 +325,7 @@ export function BuyersDashboard({
               </Button>
             </div>
           </div>
-          <div className="soft-scrollbar flex-1 overflow-y-auto p-4">
+          <div className="soft-scrollbar flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
             <div className="space-y-4">
               {detailContent}
             </div>
