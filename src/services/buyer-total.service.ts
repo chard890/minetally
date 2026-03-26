@@ -6,6 +6,27 @@ import { winnerIntegrityService } from "@/services/winner-integrity.service";
 const PRICE_REVIEW_REASON = "Price could not be resolved for the confirmed winner.";
 
 class BuyerTotalService {
+  private buildBuyerSummaryId(buyerKey: string, buyerId: string | null) {
+    return `${buyerId ?? "name"}:${buyerKey}`;
+  }
+
+  private sortBuyerItems<T extends BuyerTotalSummary>(buyers: T[]): T[] {
+    return buyers
+      .map((buyer) => ({
+        ...buyer,
+        items: [...buyer.items].sort(
+          (left, right) => new Date(right.claimedAt).getTime() - new Date(left.claimedAt).getTime(),
+        ),
+      }))
+      .sort((left, right) => {
+        if (right.totalAmount !== left.totalAmount) {
+          return right.totalAmount - left.totalAmount;
+        }
+
+        return left.buyerName.localeCompare(right.buyerName);
+      });
+  }
+
   public aggregateBuyers(collection: CollectionWorkflowDetail): BuyerTotalSummary[] {
     const buyers = new Map<string, BuyerTotalSummary>();
 
@@ -21,7 +42,7 @@ class BuyerTotalService {
 
         const key = buyerName.toLowerCase();
         const currentBuyer = buyers.get(key) ?? {
-          buyerId: buyerId ?? `name:${key}`,
+          buyerId: this.buildBuyerSummaryId(key, buyerId),
           buyerName,
           collectionId: collection.id,
           collectionName: collection.name,
@@ -48,13 +69,7 @@ class BuyerTotalService {
       }
     }
 
-    return [...buyers.values()].sort((left, right) => {
-      if (right.totalAmount !== left.totalAmount) {
-        return right.totalAmount - left.totalAmount;
-      }
-
-      return left.buyerName.localeCompare(right.buyerName);
-    });
+    return this.sortBuyerItems([...buyers.values()]);
   }
 
   public aggregateRows(rows: WinnerAggregationRow[]): BuyerTotalSummary[] {
@@ -89,7 +104,7 @@ class BuyerTotalService {
 
       const key = buyerName.toLowerCase();
       const currentBuyer = buyers.get(key) ?? {
-        buyerId: buyerId ?? `name:${key}`,
+        buyerId: this.buildBuyerSummaryId(key, buyerId),
         buyerName,
         collectionId: row.collectionId,
         collectionName: row.collectionName,
@@ -119,13 +134,7 @@ class BuyerTotalService {
       buyers.set(key, currentBuyer);
     }
 
-    return [...buyers.values()].sort((left, right) => {
-      if (right.totalAmount !== left.totalAmount) {
-        return right.totalAmount - left.totalAmount;
-      }
-
-      return left.buyerName.localeCompare(right.buyerName);
-    });
+    return this.sortBuyerItems([...buyers.values()]);
   }
 }
 
