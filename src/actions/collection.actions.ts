@@ -1222,35 +1222,95 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
     const batches = await BatchRepository.listByCollection(collectionId);
     appendFileSync(logPath, `[PIPELINE] Found ${batches.length} batches to sync comments for collection ${collectionId}\n`);
 
+    if (batches.length === 0) {
+      return {
+        success: false,
+        error: 'No batches were found for this collection.',
+        batchesSynced: 0,
+        winnersCount: 0,
+        commentsFetched: 0,
+        commentsSaved: 0,
+        commentUpsertErrors: 0,
+      };
+    }
+
     let totalWinners = 0;
     let totalCommentsFetched = 0;
     let totalCommentsSaved = 0;
     let totalCommentUpsertErrors = 0;
+    const failedBatches: Array<{ id: string; title: string; error: string }> = [];
 
     for (const batch of batches) {
       appendFileSync(logPath, `[PIPELINE] Syncing comments for batch ${batch.id} (${batch.title})\n`);
-      const result = await syncBatchCommentsAction(batch.id, { deferTotalsRefresh: true });
-      if (result.success) {
-        totalWinners += result.winnersCount || 0;
+
+      try {
+        const result = await syncBatchCommentsAction(batch.id, { deferTotalsRefresh: true });
+
+        if (!result.success) {
+          const errorMessage = result.error || 'Unknown batch sync failure.';
+          failedBatches.push({
+            id: batch.id as string,
+            title: (batch.title as string | undefined) ?? 'Untitled Batch',
+            error: errorMessage,
+          });
+          appendFileSync(
+            logPath,
+            `[PIPELINE] Batch ${batch.id} (${batch.title}) FAILED: ${errorMessage}\n`,
+          );
+        } else {
+          totalWinners += result.winnersCount || 0;
+        }
+
+        totalCommentsFetched += result.commentsFetched || 0;
+        totalCommentsSaved += result.commentsSaved || 0;
+        totalCommentUpsertErrors += result.commentUpsertErrors || 0;
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        failedBatches.push({
+          id: batch.id as string,
+          title: (batch.title as string | undefined) ?? 'Untitled Batch',
+          error: errorMessage,
+        });
+        appendFileSync(
+          logPath,
+          `[PIPELINE] Batch ${batch.id} (${batch.title}) EXCEPTION: ${errorMessage}\n${getErrorStack(error)}\n`,
+        );
       }
-      totalCommentsFetched += result.commentsFetched || 0;
-      totalCommentsSaved += result.commentsSaved || 0;
-      totalCommentUpsertErrors += result.commentUpsertErrors || 0;
     }
 
     appendFileSync(logPath, `[PIPELINE] Refreshing buyer totals once for collection ${collectionId}\n`);
     const aggregates = await collectionService.getBuyerTotals(collectionId);
     await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
+    await CollectionRepository.recalculateCollectionMetrics(collectionId);
 
     revalidatePath(`/collections/${collectionId}`);
+    revalidatePath('/collections');
     revalidatePath('/buyers');
 
-    appendFileSync(logPath, `[PIPELINE] syncAllCollectionBatchCommentsAction COMPLETE. Total winners detected: ${totalWinners}\n`);
+    appendFileSync(
+      logPath,
+      `[PIPELINE] syncAllCollectionBatchCommentsAction COMPLETE. Total winners detected: ${totalWinners}. Failed batches: ${failedBatches.length}\n`,
+    );
+
+    if (failedBatches.length === batches.length) {
+      return {
+        success: false,
+        error: `All ${batches.length} batches failed to sync comments.`,
+        batchesSynced: 0,
+        failedBatches,
+        winnersCount: totalWinners,
+        commentsFetched: totalCommentsFetched,
+        commentsSaved: totalCommentsSaved,
+        commentUpsertErrors: totalCommentUpsertErrors,
+      };
+    }
+
     if (totalCommentsFetched === 0) {
       return {
         success: false,
         error: 'No Facebook comments were fetched for any batch in this collection.',
-        batchesSynced: batches.length,
+        batchesSynced: batches.length - failedBatches.length,
+        failedBatches,
         winnersCount: totalWinners,
         commentsFetched: totalCommentsFetched,
         commentsSaved: totalCommentsSaved,
@@ -1262,7 +1322,8 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
       return {
         success: false,
         error: 'Facebook comments were fetched but could not be saved to the database.',
-        batchesSynced: batches.length,
+        batchesSynced: batches.length - failedBatches.length,
+        failedBatches,
         winnersCount: totalWinners,
         commentsFetched: totalCommentsFetched,
         commentsSaved: totalCommentsSaved,
@@ -1271,8 +1332,13 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
     }
 
     return {
-      success: true,
-      batchesSynced: batches.length,
+      success: failedBatches.length === 0,
+      error:
+        failedBatches.length > 0
+          ? `${failedBatches.length} of ${batches.length} batches failed to sync comments.`
+          : undefined,
+      batchesSynced: batches.length - failedBatches.length,
+      failedBatches,
       winnersCount: totalWinners,
       commentsFetched: totalCommentsFetched,
       commentsSaved: totalCommentsSaved,
