@@ -69,10 +69,28 @@ class CollectionService {
   public async getBuyerTotals(collectionId: string): Promise<ReturnType<typeof buyerTotalService.aggregateRows>> {
     try {
       const rows = await WinnerRepository.listAggregationRows(collectionId);
-      return buyerTotalService.aggregateRows(rows);
+      if (rows.length > 0) {
+        return buyerTotalService.aggregateRows(rows);
+      }
+
+      const collection = await this.getCollection(collectionId);
+      if (collection) {
+        return buyerTotalService.aggregateBuyers(collection);
+      }
+
+      return [];
     } catch (error) {
       console.error(`[CollectionService] Failed to load buyer totals for collection ${collectionId}:`, error);
-      return [];
+      try {
+        const collection = await this.getCollection(collectionId);
+        return collection ? buyerTotalService.aggregateBuyers(collection) : [];
+      } catch (fallbackError) {
+        console.error(
+          `[CollectionService] Fallback buyer totals also failed for collection ${collectionId}:`,
+          fallbackError,
+        );
+        return [];
+      }
     }
   }
 
