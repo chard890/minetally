@@ -290,16 +290,26 @@ export function BuyersDashboard({
       />
       <aside
         className={cn(
-          "fixed inset-y-0 right-0 z-[80] w-full max-w-md transform border-l border-white/45 bg-[#f6f1ea] shadow-[-18px_0_40px_rgba(43,43,43,0.18)] transition-transform duration-300 ease-out lg:hidden",
-          isDrawerOpen ? "translate-x-0" : "translate-x-full",
+          "fixed inset-x-3 top-[max(4.5rem,env(safe-area-inset-top)+1rem)] z-[80] mx-auto flex max-h-[calc(100dvh-max(6rem,env(safe-area-inset-top)+env(safe-area-inset-bottom)+2rem))] w-[min(100%-1.5rem,28rem)] flex-col overflow-hidden rounded-[30px] border border-white/60 bg-[#f6f1ea] shadow-[0_24px_60px_rgba(43,43,43,0.22)] transition-all duration-300 ease-out lg:hidden",
+          isDrawerOpen ? "translate-y-0 scale-100 opacity-100" : "pointer-events-none translate-y-4 scale-[0.98] opacity-0",
         )}
         role="dialog"
         aria-modal="true"
         aria-hidden={!isDrawerOpen}
       >
         <div className="flex h-full flex-col">
-          <div className="bg-[linear-gradient(135deg,rgba(255,142,110,0.96),rgba(183,156,245,0.96))] px-4 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-white">
-            <div className="flex items-start justify-between gap-4">
+          <div className="bg-[linear-gradient(135deg,rgba(255,142,110,0.96),rgba(183,156,245,0.96))] px-4 pb-5 pt-4 text-white">
+            <div className="flex items-start gap-4">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="mt-0.5 h-10 w-10 shrink-0 rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/20"
+                onClick={() => setIsDrawerOpen(false)}
+                aria-label="Close buyer details"
+              >
+                <X className="h-5 w-5" />
+              </Button>
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20 text-base font-bold text-white">
                   {selectedBuyer?.buyerName.charAt(0) ?? "?"}
@@ -313,19 +323,9 @@ export function BuyersDashboard({
                   </h2>
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 rounded-full border border-white/20 bg-white/10 text-white hover:bg-white/20"
-                onClick={() => setIsDrawerOpen(false)}
-                aria-label="Close won items drawer"
-              >
-                <X className="h-5 w-5" />
-              </Button>
             </div>
           </div>
-          <div className="soft-scrollbar flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
+          <div className="soft-scrollbar flex-1 overflow-y-auto px-4 pb-4 pt-4">
             <div className="space-y-4">
               {detailContent}
             </div>
