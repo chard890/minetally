@@ -39,7 +39,8 @@ export function BuyersDashboard({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   useEffect(() => {
-    document.body.style.overflow = isDrawerOpen ? "hidden" : "";
+    const isMobileViewport = window.matchMedia("(max-width: 1023px)").matches;
+    document.body.style.overflow = isDrawerOpen && isMobileViewport ? "hidden" : "";
 
     return () => {
       document.body.style.overflow = "";
