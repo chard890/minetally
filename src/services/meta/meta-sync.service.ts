@@ -12,6 +12,39 @@ import { MetaComment } from '@/types';
 import { winnerIntegrityService } from '@/services/winner-integrity.service';
 import { appendSyncDiagnostic, appendSyncTrace } from '@/lib/sync-diagnostics';
 
+const COLLECTION_POST_SYNC_CONCURRENCY = 4;
+const COLLECTION_ITEM_UPSERT_CONCURRENCY = 8;
+
+async function runWithConcurrency<T, TResult>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<TResult>,
+): Promise<TResult[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results = new Array<TResult>(items.length);
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  const runners = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+
+      if (currentIndex >= items.length) {
+        return;
+      }
+
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+}
+
 export class MetaSyncService {
   private static getErrorMessage(error: unknown) {
     return error instanceof Error ? error.message : 'Unknown sync error';
@@ -70,37 +103,50 @@ export class MetaSyncService {
 
       const posts = result.data;
       console.log(`Found ${posts.length} posts in range.`);
+      const syncTimestamp = new Date().toISOString();
+      const postResults = await runWithConcurrency(
+        posts,
+        COLLECTION_POST_SYNC_CONCURRENCY,
+        async (post) => {
+          const batchId = await BatchRepository.upsertBatch({
+            collection_id: collectionId,
+            meta_post_id: post.id,
+            title: post.message?.split('\n')[0] || 'Untitled Batch',
+            caption: post.message,
+            posted_at: post.created_time,
+            sync_status: 'synced',
+            last_synced_at: syncTimestamp,
+          });
 
-      let postsImported = 0;
-      let totalMediaFound = 0;
-      let totalItemsCreated = 0;
-      let postsWithMedia = 0;
-      let postsSkippedNoMedia = 0;
+          if (!batchId) {
+            return {
+              imported: false,
+              mediaFound: 0,
+              itemsCreated: 0,
+              hasMedia: false,
+              skippedNoMedia: false,
+            };
+          }
 
-      for (const post of posts) {
-        const batchId = await BatchRepository.upsertBatch({
-          collection_id: collectionId,
-          meta_post_id: post.id,
-          title: post.message?.split('\n')[0] || 'Untitled Batch',
-          caption: post.message,
-          posted_at: post.created_time,
-          sync_status: 'synced',
-          last_synced_at: new Date().toISOString()
-        });
-
-        if (batchId) {
-          postsImported++;
-
-          // --- MEDIA IMPORT ---
           console.log(`[MetaSyncService] Fetching media for batch post: ${post.id}`);
           const media = await MetaMediaService.getPostAttachments(post.id, page.access_token);
-          
-          if (media.length > 0) {
-            postsWithMedia++;
-            totalMediaFound += media.length;
-            
-            for (const [index, m] of media.entries()) {
-              const itemId = await ItemRepository.upsertItem({
+
+          if (media.length === 0) {
+            console.log(`[MetaSyncService] Skip: No media found for post ${post.id}`);
+            return {
+              imported: true,
+              mediaFound: 0,
+              itemsCreated: 0,
+              hasMedia: false,
+              skippedNoMedia: true,
+            };
+          }
+
+          const itemResults = await runWithConcurrency(
+            media,
+            COLLECTION_ITEM_UPSERT_CONCURRENCY,
+            async (m, index) => {
+              return await ItemRepository.upsertItem({
                 collection_id: collectionId,
                 batch_post_id: batchId,
                 item_number: index + 1,
@@ -108,18 +154,28 @@ export class MetaSyncService {
                 image_url: m.media_url,
                 thumbnail_url: m.media_url,
                 status: 'unclaimed',
-                raw_price_text: m.description || post.message, // Priority: photo description, fallback: post message
+                raw_price_text: m.description || post.message,
                 raw_media_json: m.raw || {},
-                last_synced_at: new Date().toISOString()
+                last_synced_at: syncTimestamp,
               });
-              if (itemId) totalItemsCreated++;
-            }
-          } else {
-            postsSkippedNoMedia++;
-            console.log(`[MetaSyncService] Skip: No media found for post ${post.id}`);
-          }
-        }
-      }
+            },
+          );
+
+          return {
+            imported: true,
+            mediaFound: media.length,
+            itemsCreated: itemResults.filter(Boolean).length,
+            hasMedia: true,
+            skippedNoMedia: false,
+          };
+        },
+      );
+
+      const postsImported = postResults.filter((result) => result.imported).length;
+      const totalMediaFound = postResults.reduce((sum, result) => sum + result.mediaFound, 0);
+      const totalItemsCreated = postResults.reduce((sum, result) => sum + result.itemsCreated, 0);
+      const postsWithMedia = postResults.filter((result) => result.hasMedia).length;
+      const postsSkippedNoMedia = postResults.filter((result) => result.skippedNoMedia).length;
 
       const summary = `[MetaSyncService] SYNC COMPLETE for ${collectionId}:
         - Raw Posts: ${posts.length}
