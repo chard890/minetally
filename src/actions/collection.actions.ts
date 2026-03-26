@@ -36,6 +36,7 @@ function getErrorStack(error: unknown) {
 }
 
 const PRICE_REVIEW_REASON = 'Price could not be resolved for the confirmed winner.';
+const BATCH_COMMENT_SYNC_CONCURRENCY = 4;
 
 function isTokenErrorMessage(message: string) {
   const normalized = message.toLowerCase();
@@ -193,6 +194,34 @@ function hasCommentSourceMetadata(rawMedia: unknown) {
     typedRawMedia.attachmentTargetId,
     typedRawMedia.subattachmentTargetId,
   ].some((value) => typeof value === 'string' && value.trim().length > 0);
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+) {
+  if (items.length === 0) {
+    return;
+  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  const runners = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+
+      if (currentIndex >= items.length) {
+        return;
+      }
+
+      await worker(items[currentIndex], currentIndex);
+    }
+  });
+
+  await Promise.all(runners);
 }
 
 function getStoredPageAccessToken(token: string | null | undefined) {
@@ -513,14 +542,47 @@ export async function syncBatchCommentsAction(
     let totalCommentsFetched = 0;
     let totalCommentsSaved = 0;
     let totalCommentUpsertErrors = 0;
-    let batchLevelCommentsByItemNumber = new Map<number, MetaComment[]>();
-    let batchLevelCommentsFetched = false;
     const maxItemNumber = batch.items.reduce((max, item) => Math.max(max, item.itemNumber), 0);
+    let batchLevelCommentsPromise: Promise<Map<number, MetaComment[]>> | null = null;
 
-    for (const item of batch.items) {
+    const getBatchLevelCommentsByItemNumber = async (requestingItemId: string) => {
+      if (!batch.metaPostId) {
+        return new Map<number, MetaComment[]>();
+      }
+
+      if (!batchLevelCommentsPromise) {
+        batchLevelCommentsPromise = (async () => {
+          let batchLevelComments = await metaService.getMediaComments(batch.metaPostId!, primaryAccessToken, {
+            pageId: page.id,
+            batchPostId: batch.metaPostId,
+            itemId: requestingItemId,
+            rawMedia: { sourceKind: 'full_picture_fallback' },
+          });
+          if (batchLevelComments.length === 0 && userAccessToken && userAccessToken !== accessToken) {
+            batchLevelComments = await metaService.getMediaComments(batch.metaPostId!, userAccessToken, {
+              pageId: page.id,
+              batchPostId: batch.metaPostId,
+              itemId: requestingItemId,
+              rawMedia: { sourceKind: 'full_picture_fallback' },
+            });
+          }
+
+          const mappedComments = groupBatchLevelCommentsByItemNumber(batchLevelComments, maxItemNumber);
+          appendFileSync(
+            logPath,
+            `[ACTION] Batch ${batch.id}: Fetched ${batchLevelComments.length} batch-level comments and mapped ${mappedComments.size} item threads\n`,
+          );
+          return mappedComments;
+        })();
+      }
+
+      return batchLevelCommentsPromise;
+    };
+
+    await runWithConcurrency(batch.items, BATCH_COMMENT_SYNC_CONCURRENCY, async (item) => {
       if (!item.metaMediaId) {
         appendFileSync(logPath, `[ACTION] Skip: Item ${item.id} has no metaMediaId\n`);
-        continue;
+        return;
       }
 
       const rawMedia = await backfillRawMediaByBatchPost({
@@ -550,29 +612,7 @@ export async function syncBatchCommentsAction(
       let effectiveComments = comments;
 
       if (comments.length === 0 && batch.metaPostId) {
-        if (!batchLevelCommentsFetched) {
-          let batchLevelComments = await metaService.getMediaComments(batch.metaPostId, primaryAccessToken, {
-            pageId: page.id,
-            batchPostId: batch.metaPostId,
-            itemId: item.id,
-            rawMedia: { sourceKind: 'full_picture_fallback' },
-          });
-          if (batchLevelComments.length === 0 && userAccessToken && userAccessToken !== accessToken) {
-            batchLevelComments = await metaService.getMediaComments(batch.metaPostId, userAccessToken, {
-              pageId: page.id,
-              batchPostId: batch.metaPostId,
-              itemId: item.id,
-              rawMedia: { sourceKind: 'full_picture_fallback' },
-            });
-          }
-          batchLevelCommentsByItemNumber = groupBatchLevelCommentsByItemNumber(batchLevelComments, maxItemNumber);
-          batchLevelCommentsFetched = true;
-          appendFileSync(
-            logPath,
-            `[ACTION] Batch ${batch.id}: Fetched ${batchLevelComments.length} batch-level comments and mapped ${batchLevelCommentsByItemNumber.size} item threads\n`,
-          );
-        }
-
+        const batchLevelCommentsByItemNumber = await getBatchLevelCommentsByItemNumber(item.id);
         effectiveComments = batchLevelCommentsByItemNumber.get(item.itemNumber) ?? [];
       }
 
@@ -741,7 +781,7 @@ export async function syncBatchCommentsAction(
           confirmedWinner.reviewReason,
         );
       }
-    }
+    });
 
     // 4. Update Buyer Totals for the whole collection unless a bulk sync will do it once at the end.
     if (!options?.deferTotalsRefresh) {
