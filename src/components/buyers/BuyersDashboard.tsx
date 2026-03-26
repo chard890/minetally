@@ -115,7 +115,7 @@ export function BuyersDashboard({
         <p className="mb-2 px-1 text-[9px] font-black uppercase tracking-[0.18em] text-[#8b8594] sm:mb-3 sm:text-[10px] sm:tracking-[0.22em]">
           Won items ({selectedBuyer.totalWonItems})
         </p>
-        <div className="soft-scrollbar max-h-[calc(100vh-22rem)] space-y-2.5 overflow-y-auto pr-1 sm:max-h-[420px] sm:space-y-3 sm:pr-2">
+        <div className="space-y-2.5 pr-1 sm:soft-scrollbar sm:max-h-[420px] sm:space-y-3 sm:overflow-y-auto sm:pr-2">
           {selectedBuyer.items.map((item) => (
             <Link
               key={item.itemId}
@@ -290,7 +290,7 @@ export function BuyersDashboard({
       />
       <aside
         className={cn(
-          "fixed inset-x-3 top-[max(4.5rem,env(safe-area-inset-top)+1rem)] z-[80] mx-auto flex max-h-[calc(100dvh-max(6rem,env(safe-area-inset-top)+env(safe-area-inset-bottom)+2rem))] w-[min(100%-1.5rem,28rem)] flex-col overflow-hidden rounded-[30px] border border-white/60 bg-[#f6f1ea] shadow-[0_24px_60px_rgba(43,43,43,0.22)] transition-all duration-300 ease-out lg:hidden",
+          "fixed inset-x-3 top-[max(4.5rem,env(safe-area-inset-top)+1rem)] bottom-[calc(6.5rem+env(safe-area-inset-bottom))] z-[80] mx-auto flex w-[min(100%-1.5rem,28rem)] flex-col overflow-hidden rounded-[30px] border border-white/60 bg-[#f6f1ea] shadow-[0_24px_60px_rgba(43,43,43,0.22)] transition-all duration-300 ease-out lg:hidden",
           isDrawerOpen ? "translate-y-0 scale-100 opacity-100" : "pointer-events-none translate-y-4 scale-[0.98] opacity-0",
         )}
         role="dialog"
@@ -325,7 +325,7 @@ export function BuyersDashboard({
               </div>
             </div>
           </div>
-          <div className="soft-scrollbar flex-1 overflow-y-auto px-4 pb-4 pt-4">
+          <div className="soft-scrollbar flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
             <div className="space-y-4">
               {detailContent}
             </div>
