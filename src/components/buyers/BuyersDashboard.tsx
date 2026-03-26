@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronRight, Download, ExternalLink, X } from "lucide-react";
+import { Check, ChevronRight, Copy, Download, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
@@ -15,6 +15,13 @@ type BuyersDashboardProps = {
   buyers: BuyerTotalSummary[];
   initialSelectedBuyerId?: string;
 };
+
+const PICKUP_SCHEDULE_DAY = "MONDAY";
+const PICKUP_SCHEDULE_DATE = "MARCH 30, 2026";
+const PICKUP_TIME = "1PM-6PM";
+const SHIPPING_PAYMENT_DATE = "MARCH 25, 2026";
+const SHIPPING_SCHEDULE_DAY = "MONDAY";
+const SHIPPING_SCHEDULE_DATE = "MARCH 30, 2026";
 
 const getCollectionStatusVariant = (status: BuyerTotalSummary["collectionStatus"]) => {
   if (status === "open") {
@@ -28,6 +35,82 @@ const getCollectionStatusVariant = (status: BuyerTotalSummary["collectionStatus"
   return "slate";
 };
 
+const buildBuyerItemsText = (buyer: BuyerTotalSummary) =>
+  buyer.items
+    .map((item) => `Item #${String(item.itemNumber).padStart(2, "0")} - ${formatCurrency(item.resolvedPrice)}`)
+    .join("\n");
+
+const buildPickupInvoice = (buyer: BuyerTotalSummary) => `GENSAN MINERS:
+PICK UP Schedule: ${PICKUP_SCHEDULE_DAY} | ${PICKUP_SCHEDULE_DATE}
+TIME: ${PICKUP_TIME}
+
+Open from MON-SAT (9am-6pm)
+MUST READ!!
+HINDI PO AKO TUMATANGGAP NG PAYMENT UPON PICK UP SA BOX, ALL PAYMENTS AY GCASH/BANK TRANSFER ONLY.
+
+KUNG MAGPADELIVER, PM YOUR COMPLETE DETAILS WITH PIN LOCATION SA MAXIM
+
+PICK UP LOCATION: Urban Essence Box 'N Style
+Laurel Avenue, Dadiangas East near SM GENSAN
+BOX #36
+Opens from 11am-6pm every Mondays to Saturday.
+
+
+RCBC:
+7591195098
+Dayanara gutierrez
+
+PAYMAYA:
+Dayanara Gutierrez
+09186441239
+
+GCASH:
+DAYANARA G.
+09186441239
+
+BE RESPONSIBLE BUYER PLEASE.
+BOGUS BUYER ipopost ko!!
+
+READ FROM THE TOP!!
+
+2 DAYS REVERVATION ONLY
+
+Item/s:
+${buildBuyerItemsText(buyer)}
+TOTAL: ${formatCurrency(buyer.totalAmount)}`;
+
+const buildShippingInvoice = (buyer: BuyerTotalSummary, shippingFee: number) => `FOR SHIPPING ITEMS:
+
+RCBC:
+7591195098
+DAYANARA M. GUTIERREZ
+
+GCASH
+09186441239
+Dayanara G.
+
+PAYMAYA:
+Dayanara Gutierrez
+09186441239
+
+For Shipping items:
+PAYMENT: TONIGHT (${SHIPPING_PAYMENT_DATE})
+SHIPPING SCHEDULE: ${SHIPPING_SCHEDULE_DAY} (${SHIPPING_SCHEDULE_DATE})
+- walang magpadelay ng payment. Same lng tayo busy. Please settle your payment LATER!
+
+LAHAT NG TRACKING NUMBERS POSTED PO SA PAGE ONCE NASHIP NA NAMIN ITEMS NYO.
+
+BE RESPONSIBLE BUYER PLEASE.
+BOGUS BUYER ipopost ko!!
+
+READ FROM THE TOP!!
+
+Item/s:
+${buildBuyerItemsText(buyer)}
+SUBTOTAL: ${formatCurrency(buyer.totalAmount)}
+SHIPPING FEE: ${formatCurrency(shippingFee)}
+TOTAL: ${formatCurrency(buyer.totalAmount + shippingFee)}`;
+
 export function BuyersDashboard({
   buyers,
   initialSelectedBuyerId,
@@ -37,6 +120,9 @@ export function BuyersDashboard({
   const searchParams = useSearchParams();
   const [activeBuyerId, setActiveBuyerId] = useState(initialSelectedBuyerId ?? buyers[0]?.buyerId);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [copiedInvoiceType, setCopiedInvoiceType] = useState<"pickup" | "shipping" | null>(null);
+  const [isShippingFormVisible, setIsShippingFormVisible] = useState(false);
+  const [shippingFeeInput, setShippingFeeInput] = useState("");
 
   useEffect(() => {
     const isMobileViewport = window.matchMedia("(max-width: 1023px)").matches;
@@ -76,6 +162,11 @@ export function BuyersDashboard({
     () => buyers.find((buyer) => buyer.buyerId === selectedBuyerId),
     [buyers, selectedBuyerId],
   );
+  const shippingFee = Number(shippingFeeInput);
+  const hasValidShippingFee = shippingFeeInput.trim() !== "" && Number.isFinite(shippingFee) && shippingFee >= 0;
+  const shippingTotal = selectedBuyer && hasValidShippingFee
+    ? selectedBuyer.totalAmount + shippingFee
+    : selectedBuyer?.totalAmount ?? 0;
 
   const syncBuyerIdInUrl = (buyerId: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -87,12 +178,37 @@ export function BuyersDashboard({
 
   const handleSelectBuyer = (buyerId: string) => {
     setActiveBuyerId(buyerId);
+    setIsShippingFormVisible(false);
+    setShippingFeeInput("");
+    setCopiedInvoiceType(null);
     syncBuyerIdInUrl(buyerId);
   };
 
   const handleOpenDrawer = (buyerId: string) => {
     handleSelectBuyer(buyerId);
     setIsDrawerOpen(true);
+  };
+
+  const handleCopyInvoice = async (type: "pickup" | "shipping") => {
+    if (!selectedBuyer) {
+      return;
+    }
+
+    if (type === "shipping" && !hasValidShippingFee) {
+      return;
+    }
+
+    const invoiceText = type === "pickup"
+      ? buildPickupInvoice(selectedBuyer)
+      : buildShippingInvoice(selectedBuyer, shippingFee);
+
+    try {
+      await navigator.clipboard.writeText(invoiceText);
+      setCopiedInvoiceType(type);
+      window.setTimeout(() => setCopiedInvoiceType((current) => (current === type ? null : current)), 2000);
+    } catch {
+      setCopiedInvoiceType(null);
+    }
   };
 
   const detailContent = selectedBuyer ? (
@@ -160,13 +276,64 @@ export function BuyersDashboard({
           <Download className="mr-2 h-4 w-4" />
           Download Invoice
         </Button>
-        <Button
-          variant="outline"
-          className="h-11 w-full sm:h-12"
-        >
-          <ExternalLink className="mr-2 h-4 w-4" />
-          Message Buyer
-        </Button>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Button
+            variant="outline"
+            className="h-11 w-full sm:h-12"
+            onClick={() => void handleCopyInvoice("pickup")}
+          >
+            {copiedInvoiceType === "pickup" ? (
+              <Check className="mr-2 h-4 w-4" />
+            ) : (
+              <Copy className="mr-2 h-4 w-4" />
+            )}
+            Pickup Invoice
+          </Button>
+          <Button
+            variant="outline"
+            className="h-11 w-full sm:h-12"
+            onClick={() => setIsShippingFormVisible((current) => !current)}
+          >
+            Shipping Invoice
+          </Button>
+        </div>
+        {isShippingFormVisible ? (
+          <div className="rounded-[18px] border border-white/55 bg-white/38 p-3.5 sm:p-4">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <label className="block">
+                <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-[#8b8594]">
+                  Shipping Fee
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={shippingFeeInput}
+                  onChange={(event) => setShippingFeeInput(event.target.value)}
+                  placeholder="Enter shipping fee"
+                  className="h-11 w-full rounded-[16px] border border-white/65 bg-white/80 px-4 text-sm font-semibold text-[#2b2b2b] outline-none transition focus:border-[#ff8e6e]/70 focus:ring-4 focus:ring-[#ff8e6e]/15"
+                />
+              </label>
+              <Button
+                variant="outline"
+                className="h-11 w-full sm:w-auto sm:px-5"
+                onClick={() => void handleCopyInvoice("shipping")}
+                disabled={!hasValidShippingFee}
+              >
+                {copiedInvoiceType === "shipping" ? (
+                  <Check className="mr-2 h-4 w-4" />
+                ) : (
+                  <Copy className="mr-2 h-4 w-4" />
+                )}
+                Copy Shipping
+              </Button>
+            </div>
+            <p className="mt-3 text-[11px] font-semibold text-[#6b6b6b]">
+              Total with shipping: {formatCurrency(shippingTotal)}
+            </p>
+          </div>
+        ) : null}
       </div>
     </>
   ) : (
