@@ -46,7 +46,7 @@ class ConfirmedWinnerService {
     );
 
     const confirmations = input.comments
-      .filter((comment) => comment.parentCommentId && comment.isReply && comment.isPageAuthor)
+      .filter((comment) => comment.isPageAuthor)
       .map((reply) => ({
         reply,
         parsed: sellerConfirmationService.parseConfirmationReply(reply.message),
@@ -94,8 +94,11 @@ class ConfirmedWinnerService {
 
     let reviewReason: string | null = null;
     let needsReview = false;
+    const explicitBuyerName = earliestValidConfirmation.parsed.isValid
+      ? winnerIntegrityService.normalizeBuyerName(earliestValidConfirmation.parsed.buyerName)
+      : null;
 
-    if (!earliestValidConfirmation.parentComment) {
+    if (!earliestValidConfirmation.parentComment && !explicitBuyerName) {
       needsReview = true;
       reviewReason = "Parent child reply mapping is broken for the seller confirmation reply.";
     } else if (conflictingBuyerNames.size > 1) {
@@ -107,17 +110,19 @@ class ConfirmedWinnerService {
     }
 
     const parentProvisional = provisionalById.get(earliestValidConfirmation.parentComment?.id ?? "");
-    const explicitBuyerName = earliestValidConfirmation.parsed.isValid
-      ? winnerIntegrityService.normalizeBuyerName(earliestValidConfirmation.parsed.buyerName)
-      : null;
     const parentBuyerName = winnerIntegrityService.normalizeBuyerName(
       earliestValidConfirmation.parentComment?.from?.name ?? null,
     );
     const fallbackBuyerName = winnerIntegrityService.normalizeBuyerName(parentProvisional?.buyerName ?? null);
-    const normalizedClaimWord = winnerIntegrityService.normalizeClaimWord(
-      parentProvisional?.claimWord ?? null,
-      input.claimCodeMapping,
-    );
+    const confirmationClaimWord = earliestValidConfirmation.parsed.isValid
+      ? earliestValidConfirmation.parsed.claimWord
+      : null;
+    const normalizedClaimWord =
+      confirmationClaimWord
+      ?? winnerIntegrityService.normalizeClaimWord(
+        parentProvisional?.claimWord ?? null,
+        input.claimCodeMapping,
+      );
     const buyerName =
       explicitBuyerName
       ?? parentBuyerName
@@ -137,7 +142,7 @@ class ConfirmedWinnerService {
 
     return {
       winner: {
-        parentCommentMetaId: earliestValidConfirmation.parentComment?.id ?? earliestValidConfirmation.reply.parentCommentId ?? "",
+        parentCommentMetaId: earliestValidConfirmation.parentComment?.id ?? earliestValidConfirmation.reply.id,
         confirmationReplyMetaId: earliestValidConfirmation.reply.id,
         buyerFacebookId: earliestValidConfirmation.parentComment?.from?.id?.trim() || null,
         buyerName,
