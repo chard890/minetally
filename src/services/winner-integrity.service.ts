@@ -95,7 +95,12 @@ class WinnerIntegrityService {
       return null;
     }
 
-    return PLACEHOLDER_NAMES.has(normalized.toLowerCase()) ? null : normalized;
+    const cleaned = normalized.replace(/^to\s+/i, "").trim();
+    if (!cleaned) {
+      return null;
+    }
+
+    return PLACEHOLDER_NAMES.has(cleaned.toLowerCase()) ? null : cleaned;
   }
 
   public normalizeBuyerId(value: string | null | undefined): string | null {
