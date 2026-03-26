@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { messengerService } from "@/services/messenger.service";
 
 type MessengerWebhookPayload = {
   object?: string;
@@ -133,6 +134,18 @@ export async function POST(request: NextRequest) {
 
   if (events.length > 0) {
     console.log("[MessengerWebhook] Received events", events);
+    await Promise.all(events.map(async (event) => {
+      if (!event.pageId || !event.senderId) {
+        return;
+      }
+
+      await messengerService.syncIncomingContact({
+        metaPageId: event.pageId,
+        senderPsid: event.senderId,
+        messageText: event.messageText,
+        timestamp: event.timestamp,
+      });
+    }));
   } else {
     console.log("[MessengerWebhook] Received payload with no messaging events");
   }

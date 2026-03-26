@@ -179,7 +179,11 @@ export default async function BuyersPage({
           </CardContent>
         </Card>
 
-        <BuyersDashboard buyers={buyers} initialSelectedBuyerId={selectedBuyerId} />
+        <BuyersDashboard
+          buyers={buyers}
+          initialSelectedBuyerId={selectedBuyerId}
+          collectionId={selectedCollectionId}
+        />
       </div>
     </div>
   );
