@@ -129,7 +129,11 @@ function normalizeBatchSyncStatus(status?: string): BatchSyncStatus {
   }
 }
 
-function normalizePriceReviewStatus(status?: string | null): PriceReviewStatus {
+function normalizePriceReviewStatus(status?: string | null, needsPriceReview?: boolean | null): PriceReviewStatus {
+  if (needsPriceReview) {
+    return 'needs_review';
+  }
+
   switch (status) {
     case 'manual_override':
     case 'locked':
@@ -367,11 +371,11 @@ export class CollectionRepository {
           sourceBatchPostId: batch.id,
           sourceBatchTitle: batch.title,
           sourcePostUrl: batch.meta_post_id ? `https://facebook.com/${batch.meta_post_id}` : '',
-          priceReviewStatus: normalizePriceReviewStatus(item.price_review_status),
+          priceReviewStatus: normalizePriceReviewStatus(item.price_review_status, item.needs_price_review),
           claimStatus: item.claim_status ?? effectiveStatus,
           rawPriceText: item.raw_price_text,
           priceMap: item.price_map || {},
-          needsPriceReview: item.needs_price_review ?? normalizePriceReviewStatus(item.price_review_status) === 'needs_review',
+          needsPriceReview: item.needs_price_review ?? normalizePriceReviewStatus(item.price_review_status, item.needs_price_review) === 'needs_review',
           winner: item.item_winners?.[0] ? {
             buyerId: item.item_winners[0].buyer_id,
             buyerName: item.item_winners[0].buyer_name,
