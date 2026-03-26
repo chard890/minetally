@@ -3,25 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Check, ChevronRight, Copy, Download, X } from "lucide-react";
+import { Check, ChevronRight, Download, LoaderCircle, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
 import { formatClaimWord, formatCurrency, formatDateTime } from "@/lib/format";
+import { BuyerInvoiceType } from "@/lib/buyer-invoice";
 import { cn } from "@/lib/utils";
 import { BuyerTotalSummary } from "@/types";
 
 type BuyersDashboardProps = {
   buyers: BuyerTotalSummary[];
   initialSelectedBuyerId?: string;
+  collectionId?: string;
 };
-
-const PICKUP_SCHEDULE_DAY = "MONDAY";
-const PICKUP_SCHEDULE_DATE = "MARCH 30, 2026";
-const PICKUP_TIME = "1PM-6PM";
-const SHIPPING_PAYMENT_DATE = "MARCH 25, 2026";
-const SHIPPING_SCHEDULE_DAY = "MONDAY";
-const SHIPPING_SCHEDULE_DATE = "MARCH 30, 2026";
 
 const getCollectionStatusVariant = (status: BuyerTotalSummary["collectionStatus"]) => {
   if (status === "open") {
@@ -35,94 +30,21 @@ const getCollectionStatusVariant = (status: BuyerTotalSummary["collectionStatus"
   return "slate";
 };
 
-const buildBuyerItemsText = (buyer: BuyerTotalSummary) =>
-  buyer.items
-    .map((item) => `Item #${String(item.itemNumber).padStart(2, "0")} - ${formatCurrency(item.resolvedPrice)}`)
-    .join("\n");
-
-const buildPickupInvoice = (buyer: BuyerTotalSummary) => `GENSAN MINERS:
-PICK UP Schedule: ${PICKUP_SCHEDULE_DAY} | ${PICKUP_SCHEDULE_DATE}
-TIME: ${PICKUP_TIME}
-
-Open from MON-SAT (9am-6pm)
-MUST READ!!
-HINDI PO AKO TUMATANGGAP NG PAYMENT UPON PICK UP SA BOX, ALL PAYMENTS AY GCASH/BANK TRANSFER ONLY.
-
-KUNG MAGPADELIVER, PM YOUR COMPLETE DETAILS WITH PIN LOCATION SA MAXIM
-
-PICK UP LOCATION: Urban Essence Box 'N Style
-Laurel Avenue, Dadiangas East near SM GENSAN
-BOX #36
-Opens from 11am-6pm every Mondays to Saturday.
-
-
-RCBC:
-7591195098
-Dayanara gutierrez
-
-PAYMAYA:
-Dayanara Gutierrez
-09186441239
-
-GCASH:
-DAYANARA G.
-09186441239
-
-BE RESPONSIBLE BUYER PLEASE.
-BOGUS BUYER ipopost ko!!
-
-READ FROM THE TOP!!
-
-2 DAYS REVERVATION ONLY
-
-Item/s:
-${buildBuyerItemsText(buyer)}
-TOTAL: ${formatCurrency(buyer.totalAmount)}`;
-
-const buildShippingInvoice = (buyer: BuyerTotalSummary, shippingFee: number) => `FOR SHIPPING ITEMS:
-
-RCBC:
-7591195098
-DAYANARA M. GUTIERREZ
-
-GCASH
-09186441239
-Dayanara G.
-
-PAYMAYA:
-Dayanara Gutierrez
-09186441239
-
-For Shipping items:
-PAYMENT: TONIGHT (${SHIPPING_PAYMENT_DATE})
-SHIPPING SCHEDULE: ${SHIPPING_SCHEDULE_DAY} (${SHIPPING_SCHEDULE_DATE})
-- walang magpadelay ng payment. Same lng tayo busy. Please settle your payment LATER!
-
-LAHAT NG TRACKING NUMBERS POSTED PO SA PAGE ONCE NASHIP NA NAMIN ITEMS NYO.
-
-BE RESPONSIBLE BUYER PLEASE.
-BOGUS BUYER ipopost ko!!
-
-READ FROM THE TOP!!
-
-Item/s:
-${buildBuyerItemsText(buyer)}
-SUBTOTAL: ${formatCurrency(buyer.totalAmount)}
-SHIPPING FEE: ${formatCurrency(shippingFee)}
-TOTAL: ${formatCurrency(buyer.totalAmount + shippingFee)}`;
-
 export function BuyersDashboard({
   buyers,
   initialSelectedBuyerId,
+  collectionId,
 }: BuyersDashboardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [activeBuyerId, setActiveBuyerId] = useState(initialSelectedBuyerId ?? buyers[0]?.buyerId);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [copiedInvoiceType, setCopiedInvoiceType] = useState<"pickup" | "shipping" | null>(null);
+  const [sentInvoiceType, setSentInvoiceType] = useState<BuyerInvoiceType | null>(null);
+  const [sendingInvoiceType, setSendingInvoiceType] = useState<BuyerInvoiceType | null>(null);
   const [isShippingFormVisible, setIsShippingFormVisible] = useState(false);
   const [shippingFeeInput, setShippingFeeInput] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     const isMobileViewport = window.matchMedia("(max-width: 1023px)").matches;
@@ -180,7 +102,9 @@ export function BuyersDashboard({
     setActiveBuyerId(buyerId);
     setIsShippingFormVisible(false);
     setShippingFeeInput("");
-    setCopiedInvoiceType(null);
+    setSentInvoiceType(null);
+    setSendingInvoiceType(null);
+    setSendError(null);
     syncBuyerIdInUrl(buyerId);
   };
 
@@ -189,8 +113,8 @@ export function BuyersDashboard({
     setIsDrawerOpen(true);
   };
 
-  const handleCopyInvoice = async (type: "pickup" | "shipping") => {
-    if (!selectedBuyer) {
+  const handleSendInvoice = async (type: BuyerInvoiceType) => {
+    if (!selectedBuyer || !collectionId) {
       return;
     }
 
@@ -198,16 +122,36 @@ export function BuyersDashboard({
       return;
     }
 
-    const invoiceText = type === "pickup"
-      ? buildPickupInvoice(selectedBuyer)
-      : buildShippingInvoice(selectedBuyer, shippingFee);
-
     try {
-      await navigator.clipboard.writeText(invoiceText);
-      setCopiedInvoiceType(type);
-      window.setTimeout(() => setCopiedInvoiceType((current) => (current === type ? null : current)), 2000);
-    } catch {
-      setCopiedInvoiceType(null);
+      setSendError(null);
+      setSendingInvoiceType(type);
+      setSentInvoiceType(null);
+
+      const response = await fetch("/api/meta/messenger/send-invoice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          collectionId,
+          buyerId: selectedBuyer.buyerId,
+          invoiceType: type,
+          shippingFee: type === "shipping" ? shippingFee : 0,
+        }),
+      });
+
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to send Messenger invoice.");
+      }
+
+      setSentInvoiceType(type);
+      window.setTimeout(() => setSentInvoiceType((current) => (current === type ? null : current)), 2500);
+    } catch (error) {
+      setSentInvoiceType(null);
+      setSendError(error instanceof Error ? error.message : "Failed to send Messenger invoice.");
+    } finally {
+      setSendingInvoiceType(null);
     }
   };
 
@@ -280,21 +224,28 @@ export function BuyersDashboard({
           <Button
             variant="outline"
             className="h-11 w-full sm:h-12"
-            onClick={() => void handleCopyInvoice("pickup")}
+            onClick={() => void handleSendInvoice("pickup")}
+            disabled={sendingInvoiceType !== null}
           >
-            {copiedInvoiceType === "pickup" ? (
+            {sendingInvoiceType === "pickup" ? (
+              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            ) : sentInvoiceType === "pickup" ? (
               <Check className="mr-2 h-4 w-4" />
             ) : (
-              <Copy className="mr-2 h-4 w-4" />
+              <Send className="mr-2 h-4 w-4" />
             )}
-            Pickup Invoice
+            Send Pickup
           </Button>
           <Button
             variant="outline"
             className="h-11 w-full sm:h-12"
-            onClick={() => setIsShippingFormVisible((current) => !current)}
+            onClick={() => {
+              setSendError(null);
+              setIsShippingFormVisible((current) => !current);
+            }}
+            disabled={sendingInvoiceType !== null}
           >
-            Shipping Invoice
+            Send Shipping
           </Button>
         </div>
         {isShippingFormVisible ? (
@@ -318,21 +269,28 @@ export function BuyersDashboard({
               <Button
                 variant="outline"
                 className="h-11 w-full sm:w-auto sm:px-5"
-                onClick={() => void handleCopyInvoice("shipping")}
-                disabled={!hasValidShippingFee}
+                onClick={() => void handleSendInvoice("shipping")}
+                disabled={!hasValidShippingFee || sendingInvoiceType !== null}
               >
-                {copiedInvoiceType === "shipping" ? (
+                {sendingInvoiceType === "shipping" ? (
+                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                ) : sentInvoiceType === "shipping" ? (
                   <Check className="mr-2 h-4 w-4" />
                 ) : (
-                  <Copy className="mr-2 h-4 w-4" />
+                  <Send className="mr-2 h-4 w-4" />
                 )}
-                Copy Shipping
+                Send Shipping
               </Button>
             </div>
             <p className="mt-3 text-[11px] font-semibold text-[#6b6b6b]">
               Total with shipping: {formatCurrency(shippingTotal)}
             </p>
           </div>
+        ) : null}
+        {sendError ? (
+          <p className="rounded-[16px] border border-[#f1c7c7] bg-[#fff2f2] px-3 py-2 text-[12px] font-semibold text-[#a14e4e]">
+            {sendError}
+          </p>
         ) : null}
       </div>
     </>
