@@ -7,33 +7,27 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/workflow/StatusBadge";
 import { formatClaimWord, formatCurrency, formatDateTime } from "@/lib/format";
-import { BuyerTotalSummary, CollectionListItem } from "@/types";
+import { BuyerTotalSummary } from "@/types";
 
 type BuyerSortBy = "name" | "amount" | "items";
 type BuyerSortOrder = "asc" | "desc";
 
 type BuyerTotalsClientProps = {
   buyers: BuyerTotalSummary[];
-  collections: CollectionListItem[];
   pageError: string | null;
-  selectedCollectionId?: string;
   initialBuyerId?: string;
   initialQuery: string;
   initialSortBy: BuyerSortBy;
   initialSortOrder: BuyerSortOrder;
-  buildCollectionHref: (collectionId: string) => string;
 };
 
 export function BuyerTotalsClient({
   buyers: initialBuyers,
-  collections,
   pageError,
-  selectedCollectionId,
   initialBuyerId,
   initialQuery,
   initialSortBy,
   initialSortOrder,
-  buildCollectionHref,
 }: BuyerTotalsClientProps) {
   const [query, setQuery] = useState(initialQuery);
   const [sortBy, setSortBy] = useState<BuyerSortBy>(initialSortBy);

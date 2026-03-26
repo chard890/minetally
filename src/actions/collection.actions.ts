@@ -18,6 +18,7 @@ import { appendSyncDiagnostic, appendSyncTrace, getSyncDiagnosticsLogPath } from
 import { decryptToken } from '@/lib/token-crypto';
 import { getServiceSupabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
+import { revalidateBuyerData, revalidateItemData } from '@/lib/data-cache';
 import { MetaComment } from '@/types';
 
 type TransactionClient = Prisma.TransactionClient;
@@ -786,6 +787,7 @@ export async function syncBatchCommentsAction(
     // 4. Update Buyer Totals for the whole collection unless a bulk sync will do it once at the end.
     if (!options?.deferTotalsRefresh) {
       appendFileSync(logPath, `[ACTION] Updating metrics for collection ${collectionId}\n`);
+      revalidateBuyerData(collectionId);
       const aggregates = await collectionService.getBuyerTotals(collectionId);
       const tracedAggregate = batch.items
         .filter((item) => shouldTraceItem(item.id))
@@ -1083,6 +1085,8 @@ export async function syncItemClaims(itemId: string) {
 
       // 4. Update aggregates
       const collectionId = item.batchPost.collectionId;
+      revalidateBuyerData(collectionId);
+      revalidateItemData(itemId);
       const aggregates = await collectionService.getBuyerTotals(collectionId);
       if (shouldTraceItem(itemId)) {
         appendSyncTrace(
@@ -1131,6 +1135,7 @@ export async function syncItemClaims(itemId: string) {
  * Finalize Collection and Aggregates Totals
  */
 export async function finalizeCollection(collectionId: string) {
+  revalidateBuyerData(collectionId);
   // Aggregation for buyer totals
   const aggregates = await collectionService.getBuyerTotals(collectionId);
   await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
@@ -1279,6 +1284,7 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
     }
 
     appendFileSync(logPath, `[PIPELINE] Refreshing buyer totals once for collection ${collectionId}\n`);
+    revalidateBuyerData(collectionId);
     const aggregates = await collectionService.getBuyerTotals(collectionId);
     await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
     await CollectionRepository.recalculateCollectionMetrics(collectionId);
@@ -1429,6 +1435,8 @@ export async function overrideCommenterNameAction(params: {
       },
     });
 
+    revalidateBuyerData(params.collectionId);
+    revalidateItemData(params.itemId);
     const aggregates = await collectionService.getBuyerTotals(params.collectionId);
     await BuyerTotalRepository.replaceCollectionTotals(params.collectionId, aggregates);
     await CollectionRepository.recalculateCollectionMetrics(params.collectionId);

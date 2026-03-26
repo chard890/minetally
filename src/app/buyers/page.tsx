@@ -5,7 +5,7 @@ import { BuyerTotalsClient } from "@/components/buyers/BuyerTotalsClient";
 import { SupabaseConfigGuide } from "@/components/workflow/SupabaseConfigGuide";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { collectionService } from "@/services/collection.service";
-import { CollectionListItem } from "@/types";
+import { BuyerTotalSummary, CollectionListItem } from "@/types";
 
 export default async function BuyersPage({
   searchParams,
@@ -37,7 +37,7 @@ export default async function BuyersPage({
     collections.find((collection) => collection.status === "open")?.id ??
     collections[0]?.id;
     
-  let buyers = [];
+  let buyers: BuyerTotalSummary[] = [];
   if (!pageError && selectedCollectionId) {
     try {
       buyers = await collectionService.getBuyerTotals(selectedCollectionId);
@@ -107,14 +107,11 @@ export default async function BuyersPage({
 
       <BuyerTotalsClient
         buyers={buyers}
-        collections={collections}
         pageError={pageError}
-        selectedCollectionId={selectedCollectionId}
         initialBuyerId={resolvedSearchParams.buyerId}
         initialQuery={query}
         initialSortBy={sortBy}
         initialSortOrder={sortOrder}
-        buildCollectionHref={(collectionId) => buildBuyersHref({ collectionId })}
       />
     </div>
   );

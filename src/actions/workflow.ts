@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { revalidateBuyerData, revalidateItemData } from '@/lib/data-cache';
 import { collectionService } from '@/services/collection.service';
 import { settingsService } from '@/services/settings.service';
 import { CollectionRepository } from '@/repositories/collection.repository';
@@ -106,6 +107,9 @@ export async function updateItemAction(
     await ItemRepository.setLockStatus(itemId, update.lockItem);
   }
 
+  revalidateBuyerData(collectionId);
+  revalidateItemData(itemId);
+
   await AuditLogRepository.log({
       collectionId,
       batchPostId: batchId,
@@ -134,6 +138,8 @@ export async function updateItemAction(
 export async function finalizeCollectionAction(collectionId: string) {
   const success = await CollectionRepository.updateCollectionStatus(collectionId, 'finalized', new Date().toISOString());
   if (!success) return { error: 'Failed to finalize collection' };
+
+  revalidateBuyerData(collectionId);
   
   await AuditLogRepository.log({
       collectionId,
@@ -175,6 +181,7 @@ export async function syncBatchAction(collectionId: string, batchId: string) {
   const success = await MetaSyncService.syncBatchDeep(batchId);
   if (!success) throw new Error("Failed to sync batch details.");
 
+  revalidateBuyerData(collectionId);
   const aggregates = await collectionService.getBuyerTotals(collectionId);
   await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
   await CollectionRepository.recalculateCollectionMetrics(collectionId);

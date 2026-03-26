@@ -7,10 +7,10 @@ export const dataCacheTags = {
 };
 
 export function revalidateBuyerData(collectionId: string) {
-  revalidateTag(dataCacheTags.buyerTotals(collectionId));
-  revalidateTag(dataCacheTags.winnerAggregationRows(collectionId));
+  revalidateTag(dataCacheTags.buyerTotals(collectionId), "max");
+  revalidateTag(dataCacheTags.winnerAggregationRows(collectionId), "max");
 }
 
 export function revalidateItemData(itemId: string) {
-  revalidateTag(dataCacheTags.itemDetail(itemId));
+  revalidateTag(dataCacheTags.itemDetail(itemId), "max");
 }
