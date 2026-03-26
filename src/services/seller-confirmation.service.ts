@@ -31,7 +31,10 @@ class SellerConfirmationService {
 
   public parseConfirmationReply(message: string): SellerConfirmationParseResult {
     const trimmedMessage = message.trim().replace(/\s+/g, " ");
-    const leadingYoursMatch = trimmedMessage.match(/^yours[\s:,-]+(.+)$/i);
+    const normalizedMessage = trimmedMessage
+      .replace(/\byoursp\b/gi, "yours")
+      .replace(/\byours[.!?]+$/i, "yours");
+    const leadingYoursMatch = normalizedMessage.match(/^yours[\s:,-]+(.+)$/i);
 
     if (leadingYoursMatch) {
       const body = leadingYoursMatch[1].trim();
@@ -47,7 +50,8 @@ class SellerConfirmationService {
       };
     }
 
-    if (!trimmedMessage.toLowerCase().endsWith("yours")) {
+    const trailingYoursMatch = normalizedMessage.match(/^(.*?)(?:\s+)yours$/i);
+    if (!trailingYoursMatch) {
       return {
         isValid: false,
         buyerName: null,
@@ -56,7 +60,7 @@ class SellerConfirmationService {
       };
     }
 
-    const buyerName = trimmedMessage.slice(0, -5).trim();
+    const buyerName = trailingYoursMatch[1].trim();
     return {
       isValid: true,
       buyerName: buyerName || null,
