@@ -6,6 +6,8 @@ export const REQUIRED_FACEBOOK_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
   'pages_read_user_content',
+  'pages_messaging',
+  'pages_manage_metadata',
 ];
 
 export function isFacebookAuthConfigured() {

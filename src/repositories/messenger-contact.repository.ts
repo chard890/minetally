@@ -59,4 +59,18 @@ export class MessengerContactRepository {
         }
       : null;
   }
+
+  static async countContactsForPage(metaPageId: string) {
+    const { count, error } = await getServiceSupabase()
+      .from("messenger_contacts")
+      .select("*", { count: "exact", head: true })
+      .eq("meta_page_id", metaPageId);
+
+    if (error) {
+      console.error("Error counting messenger contacts for page:", error);
+      return 0;
+    }
+
+    return count ?? 0;
+  }
 }

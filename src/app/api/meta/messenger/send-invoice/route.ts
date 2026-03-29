@@ -56,11 +56,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const recipient = await MessengerContactRepository.findRecipientForBuyer(page.id, buyer.buyerName);
+  const [recipient, contactCount] = await Promise.all([
+    MessengerContactRepository.findRecipientForBuyer(page.id, buyer.buyerName),
+    MessengerContactRepository.countContactsForPage(page.id),
+  ]);
+
   if (!recipient?.senderPsid) {
     return NextResponse.json(
       {
-        error: `No Messenger recipient is linked for ${buyer.buyerName}. Ask the buyer to message the Page first using the same Facebook profile name.`,
+        error: contactCount === 0
+          ? "No Messenger contacts have been synced for the connected Facebook Page yet. Check the deployed Messenger webhook configuration, then ask the buyer to send a new message."
+          : `No Messenger recipient is linked for ${buyer.buyerName}. Ask the buyer to message the Page first using the same Facebook profile name.`,
       },
       { status: 400 },
     );
