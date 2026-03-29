@@ -108,6 +108,18 @@ type WinnerMetricsRow = {
   items?: { status?: ItemStatus | null } | Array<{ status?: ItemStatus | null }> | null;
 };
 
+const ITEM_ID_QUERY_CHUNK_SIZE = 150;
+
+function chunkValues<T>(values: T[], size: number) {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
 function getWinnerItemStatus(row: WinnerMetricsRow): ItemStatus | null {
   if (Array.isArray(row.items)) {
     return row.items[0]?.status ?? null;
@@ -300,31 +312,42 @@ export class CollectionRepository {
       const itemIds = itemRows.map((item) => item.id);
 
       if (itemIds.length > 0) {
-        const [{ data: commentsData, error: commentsError }, { data: winnersData, error: winnersError }] = await Promise.all([
-          getServiceSupabase()
-            .from('comments')
-            .select('*')
-            .in('item_id', itemIds)
-            .order('commented_at', { ascending: true }),
-          getServiceSupabase()
-            .from('item_winners')
-            .select('*')
-            .in('item_id', itemIds)
-            .order('resolved_at', { ascending: false }),
+        const itemIdChunks = chunkValues(itemIds, ITEM_ID_QUERY_CHUNK_SIZE);
+
+        const [commentResponses, winnerResponses] = await Promise.all([
+          Promise.all(itemIdChunks.map((chunk) =>
+            getServiceSupabase()
+              .from('comments')
+              .select('*')
+              .in('item_id', chunk)
+              .order('commented_at', { ascending: true }),
+          )),
+          Promise.all(itemIdChunks.map((chunk) =>
+            getServiceSupabase()
+              .from('item_winners')
+              .select('*')
+              .in('item_id', chunk)
+              .order('resolved_at', { ascending: false }),
+          )),
         ]);
 
-        if (commentsError) {
-          console.error('Error fetching collection comments:', commentsError);
-          return null;
+        for (const response of commentResponses) {
+          if (response.error) {
+            console.error('Error fetching collection comments:', response.error);
+            return null;
+          }
+
+          commentRows.push(...((response.data ?? []) as FlatCommentRow[]));
         }
 
-        if (winnersError) {
-          console.error('Error fetching collection winners:', winnersError);
-          return null;
-        }
+        for (const response of winnerResponses) {
+          if (response.error) {
+            console.error('Error fetching collection winners:', response.error);
+            return null;
+          }
 
-        commentRows.push(...((commentsData ?? []) as FlatCommentRow[]));
-        winnerRows.push(...((winnersData ?? []) as FlatWinnerRow[]));
+          winnerRows.push(...((response.data ?? []) as FlatWinnerRow[]));
+        }
       }
     }
 
