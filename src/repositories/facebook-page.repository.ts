@@ -42,7 +42,13 @@ export class FacebookPageRepository {
   static async listOwnedPageIds() {
     const tenantId = await this.getTenantId();
     if (!tenantId) {
-      return [];
+      const activePageId = await getActiveFacebookPageDbId();
+      if (!activePageId) {
+        return [];
+      }
+
+      const activePage = await this.getPageById(activePageId);
+      return activePage ? [activePageId] : [];
     }
 
     const { data, error } = await getServiceSupabase()
