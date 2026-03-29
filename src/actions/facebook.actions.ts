@@ -71,6 +71,10 @@ export async function selectActiveFacebookPageAction(pageId: string) {
     return { error: 'That Facebook Page is no longer available.' };
   }
 
+  if (selectedPage.facebook_user_id) {
+    await setFacebookTenantId(selectedPage.facebook_user_id);
+  }
+
   await setActiveFacebookPageDbId(pageId);
   revalidatePath('/');
   revalidatePath('/settings');
