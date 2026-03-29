@@ -1351,6 +1351,45 @@ export async function syncAllCollectionBatchCommentsAction(collectionId: string)
   }
 }
 
+export async function getCollectionBatchSyncPlanAction(collectionId: string) {
+  try {
+    const batches = await BatchRepository.listByCollection(collectionId);
+
+    return {
+      success: true,
+      batches: batches.map((batch) => ({
+        id: batch.id as string,
+        title: (batch.title as string | undefined) ?? 'Untitled Batch',
+      })),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error),
+      batches: [],
+    };
+  }
+}
+
+export async function finalizeCollectionBatchCommentSyncAction(collectionId: string) {
+  try {
+    const aggregates = await collectionService.getBuyerTotals(collectionId);
+    await BuyerTotalRepository.replaceCollectionTotals(collectionId, aggregates);
+    await CollectionRepository.recalculateCollectionMetrics(collectionId);
+
+    revalidatePath(`/collections/${collectionId}`);
+    revalidatePath('/collections');
+    revalidatePath('/buyers');
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
 export async function overrideCommenterNameAction(params: {
   collectionId: string;
   itemId: string;
